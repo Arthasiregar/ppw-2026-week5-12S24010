@@ -343,7 +343,9 @@ Repositori memakai **Conventional Commits** dengan commit bertahap per lapisan:
 | `perf(eager-loading): optimize sql queries to prevent n+1 problem` | Eager Loading dan audit SQL |
 | `docs: add readme, screenshots and sql audit evidence` | Dokumentasi |
 
-Lihat riwayat lengkap dengan `git log --oneline`. Berkas `.env` dan folder `vendor/` tidak pernah di-commit.
+Lihat riwayat lengkap dengan `git log --oneline`.
+![Riwayat commit](docs/screenshots/13-git-log.png)
+ Berkas `.env` dan folder `vendor/` tidak pernah di-commit.
 
 ## 10. Kesesuaian dengan Spesifikasi Tugas
 
