@@ -67,10 +67,13 @@ cp .env.example .env          # Windows PowerShell: copy .env.example .env
 # 4. Buat application key
 php artisan key:generate
 
-# 5. Buat tabel dan isi data contoh (5 kategori + 20 buku)
+# 5. Buat berkas database SQLite (kosong)
+touch database/database.sqlite          # Windows PowerShell: New-Item database\database.sqlite
+
+# 6. Buat tabel dan isi data contoh (5 kategori + 20 buku)
 php artisan migrate:fresh --seed
 
-# 6. Jalankan server pengembangan
+# 7. Jalankan server pengembangan
 php artisan serve
 ```
 
