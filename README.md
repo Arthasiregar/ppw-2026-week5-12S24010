@@ -6,7 +6,7 @@ Tugas Mandiri Minggu 5, **12S3101 Pemrograman & Pengujian Web**, Institut Teknol
 |---|---|
 | **Nama** | Artha Liebe Siregar |
 | **NIM** | 12S24010 |
-| **GitHub** | [@Arthaliebe](https://github.com/Arthaliebe) |
+| **GitHub** | [@Arthasiregar](https://github.com/Arthasiregar) |
 | **Repositori** | `ppw-2026-week5-12S24010` |
 | **Framework** | Laravel 11.x (PHP 8.4, SQLite) |
 
@@ -55,7 +55,7 @@ SIPUS-Del adalah aplikasi web perpustakaan kampus berbasis **server-side renderi
 
 ```bash
 # 1. Clone repositori
-git clone https://github.com/Arthaliebe/ppw-2026-week5-12S24010.git
+git clone https://github.com/Arthasiregar/ppw-2026-week5-12S24010.git
 cd ppw-2026-week5-12S24010
 
 # 2. Pasang dependensi PHP
