@@ -23,5 +23,11 @@ class DatabaseSeeder extends Seeder
         }
 
         Buku::factory(20)->create();
+
+        $this->call([
+            UserSeeder::class,
+            BukuUjiSeeder::class,
+            PeminjamanSeeder::class,
+        ]);
     }
 }

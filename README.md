@@ -80,7 +80,7 @@ php artisan serve
 Buka **http://localhost:8000**. Halaman utama akan diarahkan ke daftar buku (`/buku`).
 
 Catatan:
-- Jika Laravel menanyakan apakah berkas `database/database.sqlite` perlu dibuat, jawab **yes**. Berkas ini tidak ikut di-commit karena sudah terdaftar di `.gitignore`.
+- Berkas `database/database.sqlite` tidak ikut di-commit (diabaikan oleh `.gitignore`), sehingga harus dibuat pada langkah 5. Tanpa berkas ini akan muncul error `Database file at path ... does not exist`.
 - Jika `composer install` menolak paket karena *security advisory* (Laravel 11 sudah melewati masa dukungan keamanan), tambahkan flag `--no-security-blocking`. Lihat [Catatan Teknis](#11-catatan-teknis).
 - Berkas `.env` **tidak** disertakan di repositori. Gunakan `.env.example` sebagai acuan.
 
