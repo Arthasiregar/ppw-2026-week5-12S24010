@@ -1,160 +1,141 @@
-# SIPUS-Del: Sistem Informasi Perpustakaan Kampus Del
 
-Tugas Mandiri Minggu 5, **12S3101 Pemrograman & Pengujian Web**, Institut Teknologi Del (Ganjil 2026/2027).
 
+Readme · MD
+# SIPUS-Del Tahap 2: Sistem Informasi Perpustakaan Kampus Del
+ 
+Tugas Mandiri Minggu 6, Mata Kuliah **Pemrograman & Pengujian Web (12S3101)**, Institut Teknologi Del.
+ 
+Pengembangan lanjutan SIPUS-Del (Minggu 5) dengan fokus pada konektivitas basis data MySQL, transaksi sirkulasi buku berbasis **ACID** (`DB::transaction` + `lockForUpdate`), rekapitulasi **Query Builder**, serta **manajemen sesi, cookie, dan autentikasi pustakawan** pada Laravel 11.
+ 
 | | |
 |---|---|
 | **Nama** | Artha Liebe Siregar |
 | **NIM** | 12S24010 |
-| **GitHub** | [@Arthasiregar](https://github.com/Arthasiregar) |
-| **Repositori** | `ppw-2026-week5-12S24010` |
-| **Framework** | Laravel 11.x (PHP 8.4, SQLite) |
-
-SIPUS-Del adalah aplikasi web perpustakaan kampus berbasis **server-side rendering** dengan arsitektur **Model-View-Controller (MVC)**. Aplikasi ini mengelola data **Buku** dan **Kategori** (relasi One-to-Many) lengkap dengan validasi server-side, proteksi CSRF, pagination, dan audit kueri SQL untuk membuktikan bahwa N+1 Query Problem sudah teratasi dengan Eager Loading.
-
-## Daftar Isi
-
-1. [Fitur](#1-fitur)
-2. [Kebutuhan Sistem](#2-kebutuhan-sistem)
-3. [Cara Instalasi](#3-cara-instalasi)
-4. [Arsitektur MVC dan Routing RESTful](#4-arsitektur-mvc-dan-routing-restful)
-5. [Model Relasional dan Eloquent ORM](#5-model-relasional-dan-eloquent-orm)
-6. [Validasi Input dan Keamanan Web](#6-validasi-input-dan-keamanan-web)
-7. [Blade Templating dan Desain UI](#7-blade-templating-dan-desain-ui)
-8. [Seeder, Factory, dan Audit Kueri SQL](#8-seeder-factory-dan-audit-kueri-sql)
-9. [Riwayat Git](#9-riwayat-git)
-10. [Kesesuaian dengan Spesifikasi Tugas](#10-kesesuaian-dengan-spesifikasi-tugas)
-11. [Catatan Teknis](#11-catatan-teknis)
-
+| **Repositori** | https://github.com/Arthasiregar/ppw-2026-week5-12S24010/tree/week6-db-session |
+| **Branch** | `week6-db-session` |
+| **Stack** | PHP 8.4, Laravel 11.57, MySQL 8.0 (InnoDB), Bootstrap 5 |
+ 
 ---
-
-## 1. Fitur
-
-- CRUD **Buku** dan **Kategori** melalui `Route::resource` (7 aksi RESTful per entitas) dengan Implicit Route Model Binding.
-- Relasi Eloquent `Kategori hasMany Buku` dan `Buku belongsTo Kategori`, dengan proteksi mass assignment (`$fillable`).
-- Eager Loading `Buku::with('kategori')` pada halaman daftar buku untuk mencegah N+1 Query.
-- Hitung jumlah buku per kategori dengan `withCount('bukus')` (satu kueri, tanpa N+1).
-- Validasi server-side `$request->validate()`: ISBN unik, judul minimal 5 karakter, stok minimal 0, dan aturan lainnya.
-- Proteksi CSRF (`@csrf`), method spoofing (`@method('PUT')` / `@method('DELETE')`), dan escape output otomatis Blade (`{{ }}`) terhadap XSS.
-- Master layout Blade Component `<x-layout>` bertema **Del Royal Purple (#4C1D95)**, pagination Bootstrap 5, flash message (sukses dan galat), dan `@forelse` untuk data kosong.
-- Kategori yang masih memiliki buku **tidak dapat dihapus** (dijaga di controller dan di level database).
-- Seeder dan Factory (Faker `id_ID`): 5 kategori dan 20 buku.
-- Listener `DB::listen` yang mencatat seluruh kueri SQL ke `storage/logs/laravel.log`.
-
-## 2. Kebutuhan Sistem
-
-| Perangkat | Versi |
+ 
+## Daftar Isi
+ 
+1. [Akun Uji Pustakawan](#1-akun-uji-pustakawan)
+2. [Cara Menjalankan Proyek](#2-cara-menjalankan-proyek)
+3. [Konektivitas Database dan Migrasi `peminjamans`](#3-konektivitas-database-dan-migrasi-peminjamans)
+4. [ERD dan Relasi Eloquent](#4-erd-dan-relasi-eloquent)
+5. [Transaksi ACID dan Concurrency Locking](#5-transaksi-acid-dan-concurrency-locking)
+6. [Bukti Pengujian Transaksi ACID](#6-bukti-pengujian-transaksi-acid)
+7. [Query Builder, withCount, dan Filter Dinamis](#7-query-builder-withcount-dan-filter-dinamis)
+8. [Manajemen Sesi, Cookie, dan Autentikasi](#8-manajemen-sesi-cookie-dan-autentikasi)
+9. [Audit Cookie dan Sesi](#9-audit-cookie-dan-sesi)
+10. [Seeder](#10-seeder)
+11. [Keamanan Repositori](#11-keamanan-repositori)
+12. [Pemetaan terhadap Rubrik Penilaian](#12-pemetaan-terhadap-rubrik-penilaian)
+ 
+---
+ 
+## 1. Akun Uji Pustakawan
+ 
+| Email | Password |
 |---|---|
-| PHP | 8.2 atau lebih baru (diuji pada 8.4.26) |
-| Ekstensi PHP | `pdo_sqlite`, `sqlite3`, `mbstring`, `openssl`, `curl`, `fileinfo`, `zip` |
-| Composer | 2.6 atau lebih baru (diuji pada 2.10.3) |
-| Database | SQLite (bawaan Laravel 11, tidak perlu instalasi server database) |
-| Koneksi internet | Untuk memuat Bootstrap 5 dari CDN |
-
-## 3. Cara Instalasi
-
+| `pustakawan@del.ac.id` | `password123` |
+ 
+Akun dibuat otomatis oleh seeder. Semua rute mutasi (CRUD buku/kategori, peminjaman, pengembalian) hanya bisa diakses setelah login.
+ 
+---
+ 
+## 2. Cara Menjalankan Proyek
+ 
 ```bash
-# 1. Clone repositori
-git clone https://github.com/Arthasiregar/ppw-2026-week5-12S24010.git
-cd ppw-2026-week5-12S24010
-
-# 2. Pasang dependensi PHP
+git clone [URL REPOSITORI]
+cd [NAMA FOLDER REPOSITORI]
+git checkout week6-db-session
+ 
 composer install
-
-# 3. Siapkan berkas environment
-cp .env.example .env          # Windows PowerShell: copy .env.example .env
-
-# 4. Buat application key
+cp .env.example .env
 php artisan key:generate
-
-# 5. Buat berkas database SQLite (kosong)
-touch database/database.sqlite          # Windows PowerShell: New-Item database\database.sqlite
-
-# 6. Buat tabel dan isi data contoh (5 kategori + 20 buku)
+```
+ 
+Buat database kosong bernama `ppw-week6` di MySQL, lalu sesuaikan `.env`:
+ 
+```env
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=ppw-week6
+DB_USERNAME=root
+DB_PASSWORD=
+ 
+SESSION_DRIVER=database
+APP_TIMEZONE=Asia/Jakarta
+```
+ 
+Jalankan migrasi, seeder, dan server:
+ 
+```bash
 php artisan migrate:fresh --seed
-
-# 7. Jalankan server pengembangan
 php artisan serve
 ```
-
-Buka **http://localhost:8000**. Halaman utama akan diarahkan ke daftar buku (`/buku`).
-
-Catatan:
-- Berkas `database/database.sqlite` tidak ikut di-commit (diabaikan oleh `.gitignore`), sehingga harus dibuat pada langkah 5. Tanpa berkas ini akan muncul error `Database file at path ... does not exist`.
-- Jika `composer install` menolak paket karena *security advisory* (Laravel 11 sudah melewati masa dukungan keamanan), tambahkan flag `--no-security-blocking`. Lihat [Catatan Teknis](#11-catatan-teknis).
-- Berkas `.env` **tidak** disertakan di repositori. Gunakan `.env.example` sebagai acuan.
-
-## 4. Arsitektur MVC dan Routing RESTful
-
-### 4.1 Pemisahan tanggung jawab (Separation of Concerns)
-
-| Lapisan | Lokasi | Tanggung jawab |
+ 
+Buka `http://localhost:8000`.
+ 
+Verifikasi koneksi database:
+ 
+```bash
+php artisan db:show
+```
+ 
+---
+ 
+## 3. Konektivitas Database dan Migrasi `peminjamans`
+ 
+Aplikasi terhubung ke MySQL 8.0 melalui PDO. Konfigurasi koneksi dibaca dari `.env` (tidak ikut ke repositori) dan diverifikasi dengan `php artisan db:show`.
+ 
+**Bukti koneksi dan daftar tabel (database `ppw-week6`, 12 tabel termasuk `bukus`, `kategoris`, `peminjamans`, `sessions`, `users`):**
+ 
+![SS-01 db:show](docs/screenshots/SS-01.png)
+ 
+### Migrasi tabel `peminjamans`
+ 
+| Kolom | Tipe | Keterangan |
 |---|---|---|
-| **Model** | `app/Models/Buku.php`, `app/Models/Kategori.php` | Struktur data, relasi, dan atribut `$fillable`. Tidak berisi HTML. |
-| **View** | `resources/views/buku/*`, `resources/views/kategori/*`, `resources/views/components/layout.blade.php` | Menampilkan data lewat Blade. Tidak ada kueri SQL di view. |
-| **Controller** | `app/Http/Controllers/BukuController.php`, `KategoriController.php` | Menerima request, memvalidasi, memanggil Model, dan memilih View. |
-| **Routes** | `routes/web.php` | Pemetaan URL ke Controller. |
-| **Migration, Factory, Seeder** | `database/` | Skema data berversi dan data contoh. |
-
-### 4.2 Alur request (contoh: `GET /buku`)
-
-```
-Browser
-  -> public/index.php                (titik masuk tunggal, memuat Composer autoloader)
-  -> bootstrap/app.php               (Application Container, routing, konfigurasi middleware)
-  -> Service Provider                (register() dan boot(), termasuk AppServiceProvider)
-  -> Middleware pipeline             (session, cookie, validasi token CSRF)
-  -> routes/web.php                  (cocok dengan buku.index)
-  -> BukuController@index            (Buku::with('kategori')->latest()->paginate(10))
-  -> Model Eloquent -> SQLite        (3 kueri: count, bukus, kategoris)
-  -> View buku.index + <x-layout>    (render Blade menjadi HTML)
-  -> HTTP Response                   (200 OK) -> Browser
-```
-
-### 4.3 Daftar rute
-
-`Route::resource('buku', BukuController::class)` dan `Route::resource('kategori', KategoriController::class)` mendaftarkan masing-masing 7 aksi baku CRUD. Ditambah satu rute `/` yang mengarahkan ke `buku.index`, total **15 rute**.
-
-| Method | URI | Nama rute | Aksi |
-|---|---|---|---|
-| GET/HEAD | `buku` | `buku.index` | `BukuController@index` |
-| GET/HEAD | `buku/create` | `buku.create` | `BukuController@create` |
-| POST | `buku` | `buku.store` | `BukuController@store` |
-| GET/HEAD | `buku/{buku}` | `buku.show` | `BukuController@show` |
-| GET/HEAD | `buku/{buku}/edit` | `buku.edit` | `BukuController@edit` |
-| PUT/PATCH | `buku/{buku}` | `buku.update` | `BukuController@update` |
-| DELETE | `buku/{buku}` | `buku.destroy` | `BukuController@destroy` |
-| (7 rute yang sama) | `kategori...` | `kategori.*` | `KategoriController@*` |
-
-![Hasil php artisan route:list](docs/screenshots/10-route-list.png)
-
-### 4.4 Implicit Route Model Binding
-
-Parameter `{buku}` dan `{kategori}` pada URL dicocokkan dengan type-hint pada method controller, sehingga Laravel otomatis mengambil record dari database (dan menghasilkan 404 jika tidak ditemukan) tanpa `Buku::find($id)` manual:
-
-```php
-public function show(Buku $buku)      // GET /buku/10  -> Buku dengan id 10
-public function edit(Buku $buku)
-public function update(Request $request, Buku $buku)
-public function destroy(Buku $buku)
-```
-
-![Halaman detail buku](docs/screenshots/08-detail-buku.png)
-
-## 5. Model Relasional dan Eloquent ORM
-
-### 5.1 Skema data (Migrations)
-
+| `id` | bigint unsigned, PK | |
+| `kode_pinjam` | varchar(25) | **unique** |
+| `buku_id` | bigint unsigned | **FK ke `bukus.id`, `ON DELETE CASCADE`** |
+| `nim_peminjam` | varchar(15) | |
+| `nama_peminjam` | varchar(150) | |
+| `tanggal_pinjam` | date | |
+| `tanggal_jatuh_tempo` | date | |
+| `tanggal_kembali` | date, nullable | diisi saat pengembalian |
+| `status` | enum(`dipinjam`,`dikembalikan`) | default `dipinjam` |
+| `created_at`, `updated_at` | timestamp | |
+ 
+Indeks tambahan: composite index `(buku_id, nim_peminjam, status)` untuk mempercepat pemeriksaan "NIM yang sama masih meminjam buku yang sama".
+ 
+**Struktur tabel `peminjamans` (kolom, indeks, dan foreign key `cascade`):**
+ 
+![SS-02a Struktur tabel peminjamans](docs/screenshots/SS-02a.png)
+ 
+**Struktur tabel `bukus` (referensi foreign key):**
+ 
+![SS-02b Struktur tabel bukus](docs/screenshots/SS-02b.png)
+ 
+---
+ 
+## 4. ERD dan Relasi Eloquent
+ 
 ```mermaid
 erDiagram
-    KATEGORIS ||--o{ BUKUS : "memiliki banyak"
+    KATEGORIS ||--o{ BUKUS : "memiliki"
+    BUKUS ||--o{ PEMINJAMANS : "dipinjam dalam"
+ 
     KATEGORIS {
         bigint id PK
-        string kode_kategori UK
         string nama_kategori
         timestamp created_at
         timestamp updated_at
     }
+ 
     BUKUS {
         bigint id PK
         string isbn UK
@@ -168,207 +149,396 @@ erDiagram
         timestamp created_at
         timestamp updated_at
     }
+ 
+    PEMINJAMANS {
+        bigint id PK
+        string kode_pinjam UK
+        bigint buku_id FK
+        string nim_peminjam
+        string nama_peminjam
+        date tanggal_pinjam
+        date tanggal_jatuh_tempo
+        date tanggal_kembali
+        enum status
+        timestamp created_at
+        timestamp updated_at
+    }
+ 
+    USERS {
+        bigint id PK
+        string name
+        string email UK
+        string password
+    }
+ 
+    SESSIONS {
+        string id PK
+        bigint user_id
+        string ip_address
+        int last_activity
+    }
 ```
-
-| Tabel | Kolom | Tipe dan constraint |
-|---|---|---|
-| `kategoris` | `kode_kategori` | `string(10)`, **unique** |
-| | `nama_kategori` | `string(100)` |
-| `bukus` | `isbn` | `string(17)`, **unique** |
-| | `judul` | `string(200)`, **index** (mempercepat pencarian judul) |
-| | `penulis`, `penerbit` | `string(150)` |
-| | `tahun_terbit` | `unsignedSmallInteger` |
-| | `kategori_id` | `foreignId` ke `kategoris.id`, `restrictOnDelete()` |
-| | `stok` | `unsignedInteger`, default `0` (tidak bisa negatif) |
-| | `sinopsis` | `text`, nullable |
-
-Pilihan desain: `restrictOnDelete()` mencegah kategori yang masih memiliki buku terhapus sehingga buku tidak menjadi yatim (orphan). Tipe `unsigned` pada `stok` dan `tahun_terbit` menjadi lapisan pengaman kedua setelah validasi aplikasi.
-
-![Hasil migrate:fresh --seed](docs/screenshots/11-migrasi-seeder.png)
-
-### 5.2 Model, relasi, dan mass assignment
-
+ 
+Catatan relasi:
+ 
+- `bukus.kategori_id` merujuk `kategoris.id` dengan aksi `restrict` (kategori yang masih dipakai buku tidak bisa dihapus).
+- `peminjamans.buku_id` merujuk `bukus.id` dengan aksi `cascade` (peminjaman ikut terhapus bila bukunya dihapus).
+- `SESSIONS.user_id` terisi ketika pengguna login, dipakai oleh session driver `database`.
+ 
+Relasi Eloquent:
+ 
 ```php
-// app/Models/Kategori.php
-protected $fillable = ['kode_kategori', 'nama_kategori'];
-public function bukus(): HasMany { return $this->hasMany(Buku::class); }
-
+// app/Models/Peminjaman.php
+public function buku(): BelongsTo
+{
+    return $this->belongsTo(Buku::class);
+}
+ 
 // app/Models/Buku.php
-protected $fillable = ['isbn', 'judul', 'penulis', 'penerbit',
-                       'tahun_terbit', 'kategori_id', 'stok', 'sinopsis'];
-public function kategori(): BelongsTo { return $this->belongsTo(Kategori::class); }
+public function peminjamans(): HasMany
+{
+    return $this->hasMany(Peminjaman::class);
+}
 ```
-
-`$fillable` hanya mengizinkan kolom yang terdaftar untuk diisi lewat `create()` / `update()`, sehingga kolom lain (misalnya `id`) tidak bisa disisipkan lewat request (proteksi Mass Assignment).
-
-### 5.3 Mitigasi N+1 Query
-
-| Lokasi | Teknik |
-|---|---|
-| `BukuController@index` | `Buku::with('kategori')->latest()->paginate(10)` (Eager Loading) |
-| `KategoriController@index` | `Kategori::withCount('bukus')` (agregasi dalam satu kueri) |
-| `BukuController@show`, `KategoriController@show` | `load('kategori')` / `load('bukus')` |
-
-Bukti terukur ada di [bagian 8.3](#83-bukti-audit-kueri-sql-eager-loading-vs-n1).
-
-## 6. Validasi Input dan Keamanan Web
-
-### 6.1 Aturan validasi server-side (`$request->validate()`)
-
-**Buku** (`BukuController::rules()`, dipakai bersama oleh `store` dan `update`):
-
-| Field | Aturan |
-|---|---|
-| `isbn` | `required`, `string`, `max:17`, **`unique:bukus,isbn`** (saat update, record yang sedang diedit dikecualikan dengan `Rule::unique(...)->ignore($buku->id)`) |
-| `judul` | `required`, `string`, **`min:5`**, `max:200` |
-| `penulis`, `penerbit` | `required`, `string`, `max:150` |
-| `tahun_terbit` | `required`, `integer`, `between:1900,<tahun berjalan>` |
-| `kategori_id` | `required`, `exists:kategoris,id` |
-| `stok` | `required`, `integer`, **`min:0`** |
-| `sinopsis` | `nullable`, `string` |
-
-**Kategori:** `kode_kategori` (`required`, `max:10`, `unique`) dan `nama_kategori` (`required`, `min:3`, `max:100`).
-
-Jika validasi gagal, Laravel mengembalikan pengguna ke form dengan pesan galat per kolom dan mempertahankan isian sebelumnya lewat `old()`.
-
-| Form kosong | Aturan spesifik (ISBN duplikat, judul < 5, stok negatif) |
-|---|---|
-| ![Validasi form kosong](docs/screenshots/03-validasi-kosong.png) | ![Validasi aturan tugas](docs/screenshots/04-validasi-aturan.png) |
-
-### 6.2 Lapisan keamanan
-
-| Ancaman | Perlindungan |
-|---|---|
-| **CSRF** | Semua form `POST`/`PUT`/`DELETE` menyertakan `@csrf`; middleware Laravel memverifikasi token (tanpa token, respons `419 Page Expired`). |
-| **Method spoofing** | Browser hanya mengirim GET/POST, sehingga form edit memakai `@method('PUT')` dan form hapus memakai `@method('DELETE')`. |
-| **XSS** | Seluruh output memakai `{{ }}` yang otomatis di-escape oleh Blade. Tidak ada `{!! !!}`. |
-| **SQL Injection** | Seluruh akses data lewat Eloquent / Query Builder dengan parameter binding, tanpa SQL mentah. |
-| **Mass Assignment** | Properti `$fillable` pada kedua model, dan `create()`/`update()` hanya menerima array hasil `validate()`. |
-| **Integritas data** | `exists:kategoris,id` pada validasi, foreign key di database, dan `restrictOnDelete()`. |
-| **Kerahasiaan konfigurasi** | `.env` dan `vendor/` tidak di-commit (terdaftar di `.gitignore`); disediakan `.env.example` tanpa `APP_KEY`. |
-
-## 7. Blade Templating dan Desain UI
-
-- **Master layout** `resources/views/components/layout.blade.php` dipakai sebagai Blade Component `<x-layout title="...">` oleh semua halaman. Isi halaman dimasukkan lewat `{{ $slot }}` sehingga tidak ada duplikasi navbar atau `<head>` di tiap view.
-- **Tema Del Royal Purple** (`#4C1D95`) untuk navbar, judul, dan tombol utama (`.btn-del`, hover `#3B0764`), dibangun di atas Bootstrap 5.3.
-- **Flash message**: `session('success')` (kotak hijau) dan `session('error')` (kotak merah) ditampilkan di layout dan dapat ditutup.
-- **Pagination aktif**: `paginate(10)` dengan `Paginator::useBootstrapFive()` di `AppServiceProvider`.
-- **Data kosong**: `@forelse ... @empty ... @endforelse` pada tabel buku dan kategori.
-- **Form DRY**: `_form.blade.php` dipakai bersama oleh halaman tambah dan edit (`@include`), menampilkan galat dengan `@error`.
-
-| Struktur view | |
-|---|---|
-| `components/layout.blade.php` | Master shell |
-| `buku/` | `index`, `create`, `edit`, `show`, `_form` |
-| `kategori/` | `index`, `create`, `edit`, `show`, `_form` |
-
-**Tampilan aplikasi**
-
-![Daftar buku dengan pagination](docs/screenshots/01-daftar-buku.png)
-
-![Daftar kategori dengan jumlah buku](docs/screenshots/02-daftar-kategori.png)
-
-| Flash sukses setelah tambah buku | Flash galat saat hapus kategori yang masih berisi buku |
-|---|---|
-| ![Flash sukses](docs/screenshots/05-flash-sukses.png) | ![Flash galat](docs/screenshots/06-flash-error-kategori.png) |
-
-| Pagination halaman 2 | Form edit (terisi data lama) |
-|---|---|
-| ![Pagination halaman 2](docs/screenshots/07-pagination-hal2.png) | ![Form edit](docs/screenshots/09-form-edit.png) |
-
-Catatan: screenshot flash sukses dan halaman 2 diambil setelah satu buku ditambahkan lewat form, sehingga total tertulis 21 buku. Data seeder awal berjumlah 20 buku.
-
-## 8. Seeder, Factory, dan Audit Kueri SQL
-
-### 8.1 Seeder dan Factory
-
-- `DatabaseSeeder` membuat **5 kategori** tetap (PRG Pemrograman, DBS Basis Data, JRK Jaringan Komputer, SIF Sistem Informasi, AIX Kecerdasan Buatan), lalu memanggil `Buku::factory(20)->create()`.
-- `BukuFactory` membangkitkan data realistis dengan Faker: ISBN-13 unik, judul dari kombinasi awalan dan topik informatika, penulis bernama Indonesia (`APP_FAKER_LOCALE=id_ID`), penerbit dari daftar penerbit nyata, tahun 2005 sampai 2025, stok 0 sampai 25, dan sinopsis acak.
-- `KategoriFactory` tersedia untuk pembuatan kategori tambahan.
-
-```bash
-php artisan migrate:fresh --seed
-php artisan tinker --execute="echo App\Models\Buku::count().' buku, '.App\Models\Kategori::count().' kategori';"
-# 20 buku, 5 kategori
-```
-
-### 8.2 Listener audit SQL
-
-Pada `AppServiceProvider::boot()`:
-
-```php
-DB::listen(function ($query) {
-    Log::info(sprintf("[SQL AUDIT] (%.2f ms) %s", $query->time, $query->sql));
-});
-```
-
-Setiap kueri dicatat ke `storage/logs/laravel.log` (`LOG_STACK=single`, `LOG_LEVEL=debug`). Kueri ke tabel `sessions` berasal dari driver session database Laravel 11 dan bukan bagian dari data buku.
-
-### 8.3 Bukti audit kueri SQL: Eager Loading vs N+1
-
-Prosedur: log dikosongkan, halaman `/buku` dibuka, lalu log dihitung.
-
-```powershell
-Set-Content storage\logs\laravel.log ""
-Select-String 'SQL AUDIT' storage\logs\laravel.log | ForEach-Object { $_.Line } | Out-File docs\bukti-eager-loading.txt
-(Select-String 'from "kategoris"' storage\logs\laravel.log).Count
-```
-
-| Kondisi | Kode di `index()` | Kueri ke tabel `kategoris` | Berkas log |
-|---|---|---|---|
-| **Dengan Eager Loading** | `Buku::with('kategori')->latest()->paginate(10)` | **1** kueri (`where "id" in (...)`) | [docs/bukti-eager-loading.txt](docs/bukti-eager-loading.txt) |
-| **Tanpa Eager Loading** (N+1) | `Buku::latest()->paginate(10)` | **20** kueri tercatat (halaman dimuat dua kali, masing-masing 10 kueri untuk 10 baris) | [docs/bukti-tanpa-eager-loading.txt](docs/bukti-tanpa-eager-loading.txt) |
-
-Kueri data pada kondisi **dengan Eager Loading** (3 kueri, tetap 3 berapa pun jumlah barisnya):
-
-```
-[SQL AUDIT] (0.13 ms) select count(*) as aggregate from "bukus"
-[SQL AUDIT] (0.14 ms) select * from "bukus" order by "created_at" desc limit 10 offset 0
-[SQL AUDIT] (0.15 ms) select * from "kategoris" where "kategoris"."id" in (1, 2, 3, 4, 5)
-```
-
-Penjelasan: `paginate()` selalu menambah satu kueri `count(*)` untuk menghitung total halaman, sehingga totalnya 3 kueri (bukan 2 seperti pada contoh teori modul). Yang penting, jumlah kueri **konstan**. Tanpa Eager Loading, setiap baris memicu satu kueri `select * from "kategoris" where "id" = ? limit 1` (Lazy Loading), sehingga kueri bertambah sebanding dengan jumlah baris (N+1).
-
-![Bukti audit SQL](docs/screenshots/12-audit-sql.png)
-
-## 9. Riwayat Git
-
-Repositori memakai **Conventional Commits** dengan commit bertahap per lapisan:
-
-| Commit | Isi |
-|---|---|
-| `chore: initialize laravel 11 project` | Kerangka proyek |
-| `feat(migration): create kategoris and bukus tables schema` | Skema data |
-| `feat(model): define relationships and fillable attributes` | Model dan relasi |
-| `feat(seeder): add factories and seeders for 5 kategori and 20 buku` | Factory dan seeder |
-| `feat(controller): implement restful actions and server validation` | Routes dan controller |
-| `feat(views): construct blade component layout and crud templates` | Layout dan view |
-| `perf(eager-loading): optimize sql queries to prevent n+1 problem` | Eager Loading dan audit SQL |
-| `docs: add readme, screenshots and sql audit evidence` | Dokumentasi |
-
-Lihat riwayat lengkap dengan `git log --oneline`.
-![Riwayat commit](docs/screenshots/13-git-log.png)
- Berkas `.env` dan folder `vendor/` tidak pernah di-commit.
-
-## 10. Kesesuaian dengan Spesifikasi Tugas
-
-| Persyaratan | Pemenuhan | Bagian |
-|---|---|---|
-| Skema `kategoris` dan `bukus` dengan tipe data dan index presisi | Unique pada ISBN dan kode, index pada judul, foreign key, tipe unsigned | [5.1](#51-skema-data-migrations) |
-| Relasi `hasMany` / `belongsTo`, `$fillable`, Eager Loading di semua index | Kedua model, `with('kategori')` dan `withCount('bukus')` | [5.2](#52-model-relasi-dan-mass-assignment), [5.3](#53-mitigasi-n1-query) |
-| `Route::resource` buku dan kategori, 7 method, Route Model Binding | 14 rute resource + 1 redirect | [4.3](#43-daftar-rute), [4.4](#44-implicit-route-model-binding) |
-| Validasi ketat (ISBN unik, judul min 5, stok min 0), `@csrf`, method spoofing | `$request->validate()`, `@csrf`, `@method` | [6](#6-validasi-input-dan-keamanan-web) |
-| Master layout `<x-layout>` Del Purple, pagination, flash, `@forelse` | Seluruhnya diterapkan | [7](#7-blade-templating-dan-desain-ui) |
-| Seeder dan Factory (min. 5 kategori, 20 buku) dan log audit SQL | 5 kategori, 20 buku, log dengan dan tanpa Eager Loading | [8](#8-seeder-factory-dan-audit-kueri-sql) |
-| `.env` tidak di-commit, `.env.example` valid | Terdaftar di `.gitignore`, `.env.example` disertakan | [6.2](#62-lapisan-keamanan) |
-
-## 11. Catatan Teknis
-
-- **Versi Laravel.** Modul mewajibkan Laravel 11.x. Proyek dibuat dengan `composer create-project laravel/laravel:^11.0 ... --no-security-blocking` karena Composer versi terbaru memblokir seluruh rilis Laravel 11.x akibat *security advisory* (Laravel 11 sudah melewati masa dukungan keamanan). Proyek ini hanya untuk keperluan pembelajaran di lingkungan lokal dan tidak dimaksudkan untuk dipublikasikan sebagai aplikasi produksi.
-- **Pesan validasi** tampil dalam bahasa Inggris karena `APP_LOCALE=en` (Laravel 11 tidak menyertakan terjemahan bahasa Indonesia secara bawaan). Label form dan pesan flash memakai bahasa Indonesia.
-- **Bootstrap** dimuat dari CDN (`cdn.jsdelivr.net`), sehingga tampilan membutuhkan koneksi internet.
-- **Sesi dan cache** memakai driver `database` (bawaan Laravel 11), sehingga log audit juga memuat kueri ke tabel `sessions`.
-
+ 
+Model `Peminjaman` mendefinisikan `$fillable` untuk seluruh kolom input dan `$casts` bertipe `date` pada ketiga kolom tanggal.
+ 
 ---
-
-Institut Teknologi Del, Fakultas Informatika dan Teknik Elektro. Dosen pengampu: Chandro Pardede, S.Kom., M.Sc.
+ 
+## 5. Transaksi ACID dan Concurrency Locking
+ 
+Operasi peminjaman dan pengembalian mengubah lebih dari satu tabel (`bukus` dan `peminjamans`), sehingga harus atomik. Seluruh proses dibungkus `DB::transaction()` (dengan 3 kali percobaan ulang bila terjadi deadlock) dan baris buku dikunci dengan `lockForUpdate()` (`SELECT ... FOR UPDATE`).
+ 
+**Mengapa `lockForUpdate()` wajib?** Bila stok tinggal 1 dan dua pustakawan menekan tombol pinjam pada milidetik yang sama tanpa penguncian, keduanya bisa lolos pemeriksaan `stok > 0` sehingga stok menjadi -1 (race condition). Dengan `lockForUpdate()`, transaksi kedua mengantre sampai transaksi pertama selesai, lalu membaca stok terbaru (0) dan ditolak.
+ 
+### Peminjaman buku (`PeminjamanController@store`)
+ 
+```php
+DB::transaction(function () use ($validated) {
+    $buku = Buku::where('id', $validated['buku_id'])
+        ->lockForUpdate()
+        ->firstOrFail();
+ 
+    if ($buku->stok < 1) {
+        throw new \RuntimeException("Stok buku '{$buku->judul}' habis, peminjaman ditolak!");
+    }
+ 
+    $nim = strtoupper(trim($validated['nim_peminjam']));
+ 
+    $sudahPinjam = Peminjaman::where('buku_id', $buku->id)
+        ->where('nim_peminjam', $nim)
+        ->where('status', 'dipinjam')
+        ->exists();
+ 
+    if ($sudahPinjam) {
+        throw new \RuntimeException("NIM {$nim} masih meminjam buku ini dan belum mengembalikan.");
+    }
+ 
+    $buku->decrement('stok');
+ 
+    Peminjaman::create([
+        'kode_pinjam'         => 'PJM-' . now()->format('Ymd') . '-' . strtoupper(Str::random(5)),
+        'buku_id'             => $buku->id,
+        'nim_peminjam'        => $nim,
+        'nama_peminjam'       => $validated['nama_peminjam'],
+        'tanggal_pinjam'      => now()->toDateString(),
+        'tanggal_jatuh_tempo' => now()->addDays(7)->toDateString(),
+        'status'              => 'dipinjam',
+    ]);
+}, 3);
+```
+ 
+### Pengembalian buku (`PeminjamanController@kembali`)
+ 
+```php
+DB::transaction(function () use ($id) {
+    $pinjam = Peminjaman::where('id', $id)->lockForUpdate()->firstOrFail();
+ 
+    if ($pinjam->status === 'dikembalikan') {
+        throw new \RuntimeException('Buku ini sudah dikembalikan sebelumnya.');
+    }
+ 
+    $buku = Buku::where('id', $pinjam->buku_id)->lockForUpdate()->firstOrFail();
+ 
+    $pinjam->update([
+        'status'          => 'dikembalikan',
+        'tanggal_kembali' => now()->toDateString(),
+    ]);
+    $buku->increment('stok');
+}, 3);
+```
+ 
+### Penanganan error
+ 
+| Jenis error | Penanganan |
+|---|---|
+| `RuntimeException` (stok habis, peminjaman ganda, sudah dikembalikan) | Transaksi di-**rollback**, pesan error ditampilkan lewat flash session |
+| `QueryException` (kesalahan database) | Dicatat dengan `Log::error('[DB EXCEPTION]...')` ke `storage/logs/laravel.log`, pengguna menerima pesan umum |
+ 
+---
+ 
+## 6. Bukti Pengujian Transaksi ACID
+ 
+Pengujian dilakukan setelah `php artisan migrate:fresh --seed`, dengan akun `pustakawan@del.ac.id`. Setiap uji dibuktikan dengan **query stok di terminal sebelum dan sesudah** aksi:
+ 
+```bash
+php artisan tinker --execute="dump(App\Models\Buku::whereIn('judul',['Analisis dan Perancangan Kecerdasan Buatan','Buku Uji Stok Kosong','Buku Uji Stok Satu'])->get(['id','judul','stok'])->toArray(), App\Models\Peminjaman::count());"
+```
+ 
+| No | Skenario | Hasil yang diharapkan | Bukti |
+|---|---|---|---|
+| 1 | Pinjam buku dengan stok > 1 | Stok berkurang 1, baris peminjaman baru berstatus `dipinjam` | SS-15, SS-16 |
+| 2 | Pinjam buku dengan stok 0 | Ditolak, **rollback**, stok tetap 0 dan tidak ada baris baru | SS-17, SS-18 |
+| 3 | NIM yang sama meminjam buku yang sama | Ditolak | SS-19 |
+| 4 | Buku stok 1 dipinjam dua NIM berbeda | Peminjam pertama berhasil (stok 0), kedua ditolak, stok tidak minus | SS-20a, SS-20b |
+| 5 | Pengembalian buku | Status `dikembalikan`, `tanggal_kembali` terisi, stok bertambah 1 | SS-21, SS-22 |
+ 
+### 6.1 Peminjaman berhasil
+ 
+Stok buku berkurang tepat 1 dan jumlah baris `peminjamans` bertambah 1 (terminal, sebelum dan sesudah):
+ 
+![SS-15 Stok sebelum dan sesudah pinjam](docs/screenshots/SS-15.png)
+ 
+Halaman daftar peminjaman menampilkan flash sukses dan baris baru berstatus **Dipinjam**:
+ 
+![SS-16 Peminjaman berhasil](docs/screenshots/SS-16.png)
+ 
+### 6.2 Penolakan stok 0 dan rollback
+ 
+Peminjaman "Buku Uji Stok Kosong" ditolak dengan pesan error:
+ 
+![SS-17 Penolakan stok 0](docs/screenshots/SS-17.png)
+ 
+Query stok membuktikan rollback: stok tetap 0 (tidak minus) dan jumlah baris `peminjamans` tidak berubah:
+ 
+![SS-18 Bukti rollback stok 0](docs/screenshots/SS-18.png)
+ 
+### 6.3 Pencegahan peminjaman ganda
+ 
+NIM yang masih meminjam buku yang sama ditolak:
+ 
+![SS-19 Pinjam ganda ditolak](docs/screenshots/SS-19.png)
+ 
+### 6.4 Stok = 1 (stok tidak boleh minus)
+ 
+Peminjam kedua pada buku bersisa 1 ditolak:
+ 
+![SS-20a Peminjam kedua ditolak](docs/screenshots/SS-20a.png)
+ 
+Stok berubah dari 1 menjadi 0 (bukan -1):
+ 
+![SS-20b Stok sebelum dan sesudah](docs/screenshots/SS-20b.png)
+ 
+### 6.5 Pengembalian buku
+ 
+Status berubah menjadi **Dikembalikan**, tanggal kembali terisi, dan flash sukses tampil:
+ 
+![SS-21 Pengembalian berhasil](docs/screenshots/SS-21.png)
+ 
+Stok buku bertambah 1 setelah pengembalian (terminal, sebelum dan sesudah):
+ 
+![SS-22 Stok bertambah setelah pengembalian](docs/screenshots/SS-22.png)
+ 
+---
+ 
+## 7. Query Builder, withCount, dan Filter Dinamis
+ 
+Katalog buku (`BukuController@index`) memakai tiga pendekatan query Laravel:
+ 
+1. **Eloquent + `withCount`**: menghitung jumlah peminjaman per buku dalam satu query (bebas N+1), dengan `with('kategori')` untuk eager loading kategori.
+2. **`when()`**: filter pencarian dinamis (judul/penulis/ISBN) dan kategori, hanya diterapkan bila parameter ada. Kondisi `orWhere` dikelompokkan dalam closure agar tidak merusak filter kategori.
+3. **Fluent Query Builder `DB::table()`**: kartu statistik perpustakaan.
+ 
+```php
+$bukus = Buku::with('kategori')
+    ->withCount('peminjamans')
+    ->when($request->search, function ($query, $search) {
+        $query->where(function ($q) use ($search) {
+            $q->where('judul', 'like', "%{$search}%")
+              ->orWhere('penulis', 'like', "%{$search}%")
+              ->orWhere('isbn', 'like', "%{$search}%");
+        });
+    })
+    ->when($request->kategori_id, fn ($query, $id) => $query->where('kategori_id', $id))
+    ->orderBy('judul')
+    ->paginate(10)
+    ->withQueryString();
+ 
+$stats = [
+    'total_judul'        => DB::table('bukus')->count(),
+    'total_stok'         => DB::table('bukus')->sum('stok'),
+    'total_dipinjam'     => DB::table('peminjamans')->where('status', 'dipinjam')->count(),
+    'total_dikembalikan' => DB::table('peminjamans')->where('status', 'dikembalikan')->count(),
+];
+```
+ 
+Riwayat pencarian terakhir disimpan di Session (`last_search`) dan ditampilkan di halaman katalog.
+ 
+### 7.1 Kartu statistik dan kolom jumlah peminjaman
+ 
+Empat kartu statistik (Total Judul, Total Stok Tersedia, Total Sedang Dipinjam, Total Dikembalikan) dan kolom **Jumlah Dipinjam** dari `withCount('peminjamans')`:
+ 
+![SS-04 Katalog dan statistik](docs/screenshots/SS-04.png)
+ 
+### 7.2 Pencarian dan filter kategori
+ 
+Kata kunci dan kategori tersimpan di URL, riwayat pencarian terakhir tampil dari Session:
+ 
+![SS-05a Pencarian dan filter](docs/screenshots/SS-05a.png)
+ 
+### 7.3 Paginasi dengan `withQueryString()`
+ 
+Pada halaman 2, parameter pencarian tetap terbawa di URL:
+ 
+![SS-05b Paginasi dengan query string](docs/screenshots/SS-05b.png)
+ 
+---
+ 
+## 8. Manajemen Sesi, Cookie, dan Autentikasi
+ 
+### Konfigurasi
+ 
+- `SESSION_DRIVER=database`: payload sesi disimpan di tabel `sessions` (sisi server), browser hanya menerima Session ID terenkripsi lewat cookie `sipus_del_session`.
+- Login memakai `Auth::attempt()` dengan opsi "Ingat saya".
+- Saat login: `session()->regenerate()` (mencegah **Session Fixation**).
+- Saat logout: `Auth::logout()`, `session()->invalidate()`, dan `session()->regenerateToken()`.
+- State sesi: `login_timestamp` (waktu login, tampil di navbar), `last_search` (pencarian katalog terakhir), dan `last_borrower` (NIM peminjam terakhir).
+- Cookie: `del_last_user_email` dibuat dengan `Cookie::queue()` (masa berlaku 7 hari).
+ 
+```php
+public function login(Request $request)
+{
+    $credentials = $request->validate([
+        'email'    => 'required|email',
+        'password' => 'required|string',
+    ]);
+ 
+    if (Auth::attempt($credentials, $request->boolean('remember'))) {
+        $request->session()->regenerate();   // anti Session Fixation
+        session(['login_timestamp' => now()->format('d M Y, H:i:s') . ' WIB']);
+        Cookie::queue('del_last_user_email', $request->email, 10080);
+ 
+        return redirect()->intended(route('buku.index'))->with('success', 'Login berhasil.');
+    }
+ 
+    return back()->withInput($request->only('email'))->with('error', 'Kredensial login tidak valid.');
+}
+ 
+public function logout(Request $request)
+{
+    Auth::logout();
+    $request->session()->invalidate();
+    $request->session()->regenerateToken();
+ 
+    return redirect()->route('login')->with('success', 'Sesi server telah dihapus dengan aman.');
+}
+```
+ 
+### Proteksi rute dengan middleware `auth`
+ 
+Rute **publik** (hanya membaca): `buku.index`, `buku.show`, `kategori.index`, `kategori.show`, dan halaman login.
+Rute **terproteksi `auth`**: create/store/edit/update/destroy buku dan kategori, seluruh rute peminjaman, dan logout.
+ 
+Daftar rute peminjaman beserta middleware (`auth` tampil pada semua rute):
+ 
+![SS-03a Rute peminjaman dengan middleware auth](docs/screenshots/SS-03a.png)
+ 
+Daftar rute buku (`create`, `store`, `edit`, `update`, `destroy` memakai `auth`; `index` dan `show` publik):
+ 
+![SS-03b Rute buku dengan middleware auth](docs/screenshots/SS-03b.png)
+ 
+### Alur autentikasi
+ 
+**Halaman login:**
+ 
+![SS-06 Halaman login](docs/screenshots/SS-06.png)
+ 
+**Login gagal** menampilkan pesan error:
+ 
+![SS-07 Login gagal](docs/screenshots/SS-07.png)
+ 
+**Akses rute terproteksi tanpa login** (`/peminjaman`) dialihkan ke `/login`:
+ 
+![SS-08 Redirect ke login](docs/screenshots/SS-08.png)
+ 
+**Login berhasil**: navbar menampilkan nama pustakawan, waktu login dari Session (`login_timestamp`), tombol Logout, dan flash message:
+ 
+![SS-09 Login berhasil](docs/screenshots/SS-09.png)
+ 
+**Logout** menghapus sesi server dan kembali ke halaman login dengan flash message:
+ 
+![SS-10 Logout](docs/screenshots/SS-10.png)
+ 
+---
+ 
+## 9. Audit Cookie dan Sesi
+ 
+Inspeksi dilakukan pada Chrome DevTools, tab **Application, Cookies, `http://localhost:8000`**. Nilai cookie disamarkan.
+ 
+| Cookie | HttpOnly | SameSite | Keterangan |
+|---|---|---|---|
+| `sipus_del_session` | ✔ | Lax | Session ID terenkripsi; **HttpOnly** mencegah pencurian cookie lewat JavaScript (XSS), **SameSite=Lax** memitigasi CSRF |
+| `del_last_user_email` | ✔ | Lax | Dibuat dengan `Cookie::queue()`, berlaku 7 hari, terenkripsi oleh middleware cookie Laravel |
+| `XSRF-TOKEN` | tidak | Lax | Token CSRF; sengaja tidak HttpOnly agar dapat dibaca JavaScript untuk request AJAX |
+ 
+**Cookie sesi dengan flag HttpOnly dan SameSite=Lax:**
+ 
+![SS-11 Cookie sesi](docs/screenshots/SS-11.png)
+ 
+**Cookie `del_last_user_email` (dibuat dengan `Cookie::queue()`):**
+ 
+![SS-12 Cookie del_last_user_email](docs/screenshots/SS-12.png)
+ 
+**Payload sesi disimpan di sisi server, tabel `sessions` berisi sesi dengan `user_id` terisi (pengguna sudah login):**
+ 
+![SS-13 Tabel sessions](docs/screenshots/SS-13.png)
+ 
+---
+ 
+## 10. Seeder
+ 
+`php artisan migrate:fresh --seed` menjalankan seeder berikut:
+ 
+| Seeder | Isi |
+|---|---|
+| `UserSeeder` | Akun pustakawan uji `pustakawan@del.ac.id` / `password123` |
+| `BukuUjiSeeder` | Sampel buku, termasuk **"Buku Uji Stok Kosong" (stok 0)** dan **"Buku Uji Stok Satu" (stok 1)** untuk pengujian transaksi |
+| `PeminjamanSeeder` | Sampel transaksi: `PJM-SEED-0001` dan `PJM-SEED-0002` berstatus dipinjam, `PJM-SEED-0003` berstatus dikembalikan |
+ 
+**Output `migrate:fresh --seed` tanpa error:**
+ 
+![SS-14 migrate:fresh --seed](docs/screenshots/SS-14.png)
+ 
+---
+ 
+## 11. Keamanan Repositori
+ 
+- `.env` dan folder `vendor/` **tidak** di-commit (terdaftar di `.gitignore`).
+- Kredensial akun uji hanya berlaku untuk data seeder lokal (lihat bagian 1).
+- Nilai cookie sesi pada screenshot disamarkan.
+ 
+Bukti `.env` dan `vendor/` diabaikan Git:
+ 
+![SS-23 git check-ignore](docs/screenshots/SS-23.png)
+ 
+Riwayat commit (Conventional Commits):
+ 
+![SS-24 git log](docs/screenshots/SS-24.png)
+ 
+---
+ 
+## 12. Pemetaan terhadap Rubrik Penilaian
+ 
+| Kriteria (bobot) | Implementasi | Bukti |
+|---|---|---|
+| **1. Konektivitas DB dan migrasi `peminjamans` (20%)** | Koneksi MySQL via `.env`, diverifikasi `db:show`. Migrasi `peminjamans` dengan FK `buku_id` `cascadeOnDelete`, `kode_pinjam` unik, relasi `Buku` hasMany `Peminjaman` dan `Peminjaman` belongsTo `Buku` | Bagian 3 dan 4; SS-01, SS-02a, SS-02b |
+| **2. Transaksi ACID dan Concurrency Locking (25%)** | Pinjam dan kembali dibungkus `DB::transaction()` + `lockForUpdate()`; stok 0 ditolak dan di-rollback; cegah NIM ganda; `QueryException` dicatat `Log::error()` | Bagian 5 dan 6; SS-15 sampai SS-22 |
+| **3. Query Builder, withCount, dan filter (15%)** | Statistik `DB::table()`; katalog `with('kategori')->withCount('peminjamans')` (bebas N+1); filter `when()`; `paginate()->withQueryString()` | Bagian 7; SS-04, SS-05a, SS-05b |
+| **4. Sesi, cookie, dan auth (25%)** | `Auth::attempt()`, `regenerate()` saat login, `invalidate()` + `regenerateToken()` saat logout; rute mutasi diproteksi `auth`; Session (`login_timestamp`, `last_search`, `last_borrower`) dan Cookie (`del_last_user_email`) | Bagian 8 dan 9; SS-03a, SS-03b, SS-06 sampai SS-13 |
+| **5. Seeder, bukti uji ACID, dan dokumentasi (15%)** | Seeder akun pustakawan, buku stok 0 dan 1, dan sampel peminjaman; README memuat ERD, bukti rollback stok 0, dan audit cookie HttpOnly | Bagian 1, 4, 6, 9, 10; SS-14, SS-17, SS-18, SS-11 |
+ 
+---
+ 
+*Disusun untuk Mata Kuliah Pemrograman dan Pengujian Aplikasi Web (12S3101), Institut Teknologi Del, Semester Ganjil 2026/2027.*
+ 
+Claude finished the response
