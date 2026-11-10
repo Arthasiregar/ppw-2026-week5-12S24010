@@ -1,0 +1,22 @@
+$kind: collection
+variables:
+  base_url: ""
+  token: ""
+  buku_id: ""
+  peminjaman_id: ""
+scripts:
+  - type: http:beforeRequest
+    code: "pm.request.headers.upsert({\r
+
+      \    key: 'Accept',\r
+
+      \    value: 'application/json'\r
+
+      });"
+    language: text/javascript
+auth:
+  - id: eb731ba4-6ca8-4288-8a8d-7190e77ae14c
+    type: bearer
+    name: Bearer Token
+    credentials:
+      token: "{{token}}"

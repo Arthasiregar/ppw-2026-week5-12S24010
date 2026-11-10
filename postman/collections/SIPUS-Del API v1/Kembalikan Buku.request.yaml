@@ -1,0 +1,4 @@
+$kind: http-request
+url: "{{base_url}}/peminjamans/{{peminjaman_id}}/kembalikan"
+method: PATCH
+order: 11000

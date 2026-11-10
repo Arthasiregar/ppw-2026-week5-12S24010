@@ -1,0 +1,25 @@
+$kind: http-request
+url: "{{base_url}}/peminjamans"
+method: POST
+body:
+  type: json
+  content: "{\r
+
+    \  \"buku_id\": 1,\r
+
+    \  \"nim_peminjam\": \"12S22001\",\r
+
+    \  \"nama_peminjam\": \"Bona Pandiangan\",\r
+
+    \  \"durasi_hari\": 7\r
+
+    }"
+scripts:
+  - type: afterResponse
+    code: "if (pm.response.code === 201) {\r
+
+      \  pm.collectionVariables.set('peminjaman_id', pm.response.json().data.id);\r
+
+      }"
+    language: text/javascript
+order: 7919

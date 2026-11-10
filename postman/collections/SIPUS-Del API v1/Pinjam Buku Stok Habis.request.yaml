@@ -1,0 +1,17 @@
+$kind: http-request
+url: "{{base_url}}/peminjamans"
+method: POST
+body:
+  type: json
+  content: "{\r
+
+    \  \"buku_id\": 5,\r
+
+    \  \"nim_peminjam\": \"12S22002\",\r
+
+    \  \"nama_peminjam\": \"Siti Nurhaliza\",\r
+
+    \  \"durasi_hari\": 7\r
+
+    }"
+order: 9000
