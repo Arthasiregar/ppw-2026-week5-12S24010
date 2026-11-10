@@ -1,373 +1,318 @@
-# SIPUS-Del: Sistem Informasi Perpustakaan Kampus Del
+# SIPUS-Del Tahap 3: Web Services (SOAP Legacy & RESTful API v1)
 
-Tugas Mandiri Minggu 5, **12S3101 Pemrograman & Pengujian Web**, Institut Teknologi Del (Ganjil 2026/2027).
+Tugas Mandiri Minggu 9, **12S3101 Pemrograman & Pengujian Aplikasi Web**, Institut Teknologi Del (Ganjil 2026/2027).
+
+## 1. Identitas Mahasiswa
 
 | | |
 |---|---|
-| **Nama** | Artha Liebe Siregar |
+| **Nama Lengkap** | Artha Liebe Siregar |
 | **NIM** | 12S24010 |
+| **Kelas** | 13SI |
+| **Program Studi** | S1-Sistem Informasi |
 | **GitHub** | [@Arthasiregar](https://github.com/Arthasiregar) |
-| **Repositori** | `ppw-2026-week5-12S24010` |
-| **Framework** | Laravel 11.x (PHP 8.4, SQLite) |
+| **Repositori** | `ppw-2026-week5-12S24010` (branch pengerjaan: `week9-rest-api`) |
+| **Framework** | Laravel 11.x (PHP 8.4, SQLite), Laravel Sanctum |
 
-SIPUS-Del adalah aplikasi web perpustakaan kampus berbasis **server-side rendering** dengan arsitektur **Model-View-Controller (MVC)**. Aplikasi ini mengelola data **Buku** dan **Kategori** (relasi One-to-Many) lengkap dengan validasi server-side, proteksi CSRF, pagination, dan audit kueri SQL untuk membuktikan bahwa N+1 Query Problem sudah teratasi dengan Eager Loading.
+SIPUS-Del adalah sistem informasi perpustakaan kampus yang pada Minggu 5 dan 6 dibangun sebagai aplikasi web monolitik (Blade, MVC, session). Pada Minggu 9, sistem diperluas menjadi **penyedia layanan (Service Provider)** melalui endpoint SOAP dan RESTful API v1, sekaligus menjadi **pengguna layanan (Service Consumer)** dengan memanggil OpenLibrary REST API. Antarmuka web Blade dari minggu sebelumnya tetap dipertahankan dan tidak diubah.
 
 ## Daftar Isi
 
-1. [Fitur](#1-fitur)
-2. [Kebutuhan Sistem](#2-kebutuhan-sistem)
-3. [Cara Instalasi](#3-cara-instalasi)
-4. [Arsitektur MVC dan Routing RESTful](#4-arsitektur-mvc-dan-routing-restful)
-5. [Model Relasional dan Eloquent ORM](#5-model-relasional-dan-eloquent-orm)
-6. [Validasi Input dan Keamanan Web](#6-validasi-input-dan-keamanan-web)
-7. [Blade Templating dan Desain UI](#7-blade-templating-dan-desain-ui)
-8. [Seeder, Factory, dan Audit Kueri SQL](#8-seeder-factory-dan-audit-kueri-sql)
-9. [Riwayat Git](#9-riwayat-git)
-10. [Kesesuaian dengan Spesifikasi Tugas](#10-kesesuaian-dengan-spesifikasi-tugas)
-11. [Catatan Teknis](#11-catatan-teknis)
+1. [Identitas Mahasiswa](#1-identitas-mahasiswa)
+2. [Analisis Kebutuhan dan Kelayakan Web Services](#2-analisis-kebutuhan-dan-kelayakan-web-services)
+3. [Katalog Endpoint Web Services](#3-katalog-endpoint-web-services)
+4. [Panduan Instalasi dan Pengujian Cepat](#4-panduan-instalasi-dan-pengujian-cepat)
+5. [Galeri Bukti Pengujian](#5-galeri-bukti-pengujian)
+6. [Arsitektur dan Keputusan Desain](#6-arsitektur-dan-keputusan-desain)
+7. [Riwayat Git](#7-riwayat-git)
+8. [Kesesuaian dengan Spesifikasi Tugas](#8-kesesuaian-dengan-spesifikasi-tugas)
 
 ---
 
-## 1. Fitur
+## 2. Analisis Kebutuhan dan Kelayakan Web Services
 
-- CRUD **Buku** dan **Kategori** melalui `Route::resource` (7 aksi RESTful per entitas) dengan Implicit Route Model Binding.
-- Relasi Eloquent `Kategori hasMany Buku` dan `Buku belongsTo Kategori`, dengan proteksi mass assignment (`$fillable`).
-- Eager Loading `Buku::with('kategori')` pada halaman daftar buku untuk mencegah N+1 Query.
-- Hitung jumlah buku per kategori dengan `withCount('bukus')` (satu kueri, tanpa N+1).
-- Validasi server-side `$request->validate()`: ISBN unik, judul minimal 5 karakter, stok minimal 0, dan aturan lainnya.
-- Proteksi CSRF (`@csrf`), method spoofing (`@method('PUT')` / `@method('DELETE')`), dan escape output otomatis Blade (`{{ }}`) terhadap XSS.
-- Master layout Blade Component `<x-layout>` bertema **Del Royal Purple (#4C1D95)**, pagination Bootstrap 5, flash message (sukses dan galat), dan `@forelse` untuk data kosong.
-- Kategori yang masih memiliki buku **tidak dapat dihapus** (dijaga di controller dan di level database).
-- Seeder dan Factory (Faker `id_ID`): 5 kategori dan 20 buku.
-- Listener `DB::listen` yang mencatat seluruh kueri SQL ke `storage/logs/laravel.log`.
+### 2.1 Pemetaan Peran Provider dan Consumer
 
-## 2. Kebutuhan Sistem
+UPT Perpustakaan IT Del memiliki tiga kebutuhan integrasi lintas sistem. Setiap kebutuhan dipetakan ke satu peran arsitektur:
 
-| Perangkat | Versi |
-|---|---|
-| PHP | 8.2 atau lebih baru (diuji pada 8.4.26) |
-| Ekstensi PHP | `pdo_sqlite`, `sqlite3`, `mbstring`, `openssl`, `curl`, `fileinfo`, `zip` |
-| Composer | 2.6 atau lebih baru (diuji pada 2.10.3) |
-| Database | SQLite (bawaan Laravel 11, tidak perlu instalasi server database) |
-| Koneksi internet | Untuk memuat Bootstrap 5 dari CDN |
+| No | Kebutuhan Integrasi | Peran SIPUS-Del | Teknologi | Alasan |
+|---|---|---|---|---|
+| 1 | Sistem Administrasi Yudisium (legacy) perlu mengecek tanggungan buku mahasiswa | **Service Provider** | SOAP (XML, WSDL) | Sistem yudisium lama hanya memahami SOAP. Data peminjaman adalah domain sah SIPUS-Del, sehingga diekspos secara terkontrol. |
+| 2 | Aplikasi Mobile dan Kiosk Mandiri perlu katalog serta transaksi peminjaman | **Service Provider** | REST API v1 (JSON, Bearer Token) | Klien modern membutuhkan layanan ringan, stateless, dan mudah diskalakan. |
+| 3 | Detail buku diperkaya metadata eksternal (jumlah halaman, penerbit, tautan pratinjau, sampul) | **Service Consumer** | Laravel `Http` facade ke OpenLibrary REST API | Katalog bibliografi dunia berada di luar domain inti perpustakaan kampus. Membangunnya sendiri tidak efisien. |
 
-## 3. Cara Instalasi
+### 2.2 Perbandingan SOAP dan REST untuk Studi Kasus Perpustakaan
+
+| Aspek | SOAP (Bebas Pustaka Yudisium) | REST (Mobile dan Kiosk) |
+|---|---|---|
+| Format pesan | Wajib XML (`<soap:Envelope>`) | JSON |
+| Kontrak layanan | File WSDL (`/soap/sipus.wsdl`) | OpenAPI 3.0 (`docs/openapi-sipus-v1.yaml`) |
+| Ukuran payload | Besar (banyak tag pembungkus) | Ringkas |
+| Penanganan galat | `<soap:Fault>` | Kode status HTTP + RFC 7807 (`application/problem+json`) |
+| Pemanfaatan HTTP | Hanya `POST` sebagai pipa | Verb dan status code semantik (GET, POST, PUT, PATCH, DELETE) |
+| Manajemen state | Tidak bergantung session | Stateless penuh (Bearer Token Sanctum) |
+| Cocok untuk | Integrasi sistem legacy atau enterprise | Aplikasi mobile, kiosk, SPA, mitra baru |
+
+### 2.3 Alasan Teknis Memilih REST untuk Mobile dan Kiosk
+
+1. **Efisiensi bandwidth.** JSON jauh lebih ringkas daripada amplop XML SOAP. Hal ini penting bagi perangkat mobile dengan koneksi terbatas.
+2. **Stateless.** Setiap request membawa identitas sendiri lewat `Authorization: Bearer <token>`. Server tidak menyimpan session, sehingga layanan mudah ditempatkan di belakang beberapa server (load balancer).
+3. **Semantik HTTP.** Status `201 Created` (dengan header `Location`), `204 No Content`, `404`, `409 Conflict`, dan `422` membuat klien memahami hasil operasi tanpa membongkar isi respons.
+4. **Hypermedia (HATEOAS).** Tautan `_links` bersifat dinamis: `pinjam_buku` hanya muncul bila stok lebih dari 0, dan `kembalikan_buku` hanya muncul bila status peminjaman `dipinjam`. Klien tidak perlu menduplikasi aturan bisnis.
+5. **Ekosistem.** Seluruh bahasa klien (Kotlin, Dart, JavaScript) mendukung JSON secara native.
+
+SOAP tetap dipertahankan hanya untuk satu kebutuhan, yaitu integrasi dengan sistem yudisium lama yang tidak dapat diubah.
+
+---
+
+## 3. Katalog Endpoint Web Services
+
+Seluruh endpoint REST berada di bawah prefiks `/api/v1`. Postman memakai variabel `{{base_url}}` bernilai `http://localhost:8000/api/v1`.
+
+### 3.1 SOAP (Sistem Legacy Yudisium)
+
+| Method | URI | Auth | Deskripsi | Status Respons |
+|---|---|---|---|---|
+| GET | `/soap/sipus.wsdl` | Publik | Kontrak WSDL operasi `CheckClearanceStatus` | 200 |
+| POST | `/soap/sipus` | Publik | Menerima `<soap:Envelope>` berisi `<nim_peminjam>`, mengembalikan `<active_loans>` dan `<is_cleared>` | 200 (sukses), 500 (`<soap:Fault>`: tag kosong atau XML cacat) |
+
+### 3.2 REST: Autentikasi
+
+| Method | URI | Auth | Deskripsi | Status Respons |
+|---|---|---|---|---|
+| POST | `/api/v1/auth/login` | Publik | Verifikasi kredensial dan penerbitan Bearer Token | 200, 401, 422 |
+| GET | `/api/v1/auth/me` | Bearer | Profil pemilik token aktif | 200, 401 |
+| POST | `/api/v1/auth/logout` | Bearer | Mencabut (revoke) token yang sedang dipakai | 200, 401 |
+
+### 3.3 REST: Katalog Buku
+
+| Method | URI | Auth | Deskripsi | Status Respons |
+|---|---|---|---|---|
+| GET | `/api/v1/bukus` | Publik | Koleksi terpaginasi. Parameter: `search`, `kategori_id`, `tersedia=1`, `sort`, `per_page` | 200 |
+| GET | `/api/v1/bukus/{id}` | Publik | Detail buku, objek kategori, dan riwayat peminjaman | 200, 404 |
+| POST | `/api/v1/bukus` | Bearer | Membuat buku baru (+ header `Location`) | 201, 401, 422 |
+| PUT | `/api/v1/bukus/{id}` | Bearer | Penggantian penuh (seluruh atribut wajib) | 200, 401, 404, 422 |
+| PATCH | `/api/v1/bukus/{id}` | Bearer | Pembaruan parsial (`sometimes\|required`) | 200, 400, 401, 404, 422 |
+| DELETE | `/api/v1/bukus/{id}` | Bearer | Menghapus buku. Ditolak bila ada peminjaman aktif | 204, 401, 404, 409 |
+| GET | `/api/v1/bukus/{id}/referensi-eksternal` | Publik | **Consumer**: metadata tambahan dari OpenLibrary | 200, 404, 502, 504 |
+
+### 3.4 REST: Sirkulasi Peminjaman (ACID)
+
+| Method | URI | Auth | Deskripsi | Status Respons |
+|---|---|---|---|---|
+| GET | `/api/v1/peminjamans` | Bearer | Daftar transaksi terpaginasi. Filter: `status=dipinjam\|dikembalikan`, `nim` | 200, 401 |
+| POST | `/api/v1/peminjamans` | Bearer | Mencatat peminjaman (`DB::transaction()` + `lockForUpdate()`) | 201, 401, 409, 422 |
+| PATCH | `/api/v1/peminjamans/{id}/kembalikan` | Bearer | Mengembalikan buku (stok +1) secara atomik | 200, 401, 404, 409 |
+
+### 3.5 Format Galat (RFC 7807)
+
+Seluruh galat 401, 404, dan 422 pada `/api/*` dikembalikan dengan `Content-Type: application/problem+json` dan atribut `type`, `title`, `status`, `detail`, `instance` (ditambah objek `errors` pada 422).
+
+Pembedaan dua galat 404 pada endpoint referensi eksternal:
+
+| Kasus | `title` | Server menghubungi OpenLibrary? |
+|---|---|---|
+| Buku lokal ada, tetapi ISBN tidak ada di OpenLibrary | `External Reference Not Found` | Ya |
+| Buku lokal tidak ada | `Resource Not Found` | Tidak |
+
+---
+
+## 4. Panduan Instalasi dan Pengujian Cepat
+
+### 4.1 Instalasi
 
 ```bash
-# 1. Clone repositori
+# 1. Clone repositori dan pindah ke branch Minggu 9
 git clone https://github.com/Arthasiregar/ppw-2026-week5-12S24010.git
 cd ppw-2026-week5-12S24010
+git checkout week9-rest-api
 
-# 2. Pasang dependensi PHP
+# 2. Pasang dependensi
 composer install
 
-# 3. Siapkan berkas environment
+# 3. Siapkan environment
 cp .env.example .env          # Windows PowerShell: copy .env.example .env
-
-# 4. Buat application key
 php artisan key:generate
 
-# 5. Buat berkas database SQLite (kosong)
+# 4. Siapkan database SQLite dan isi data contoh
 touch database/database.sqlite          # Windows PowerShell: New-Item database\database.sqlite
-
-# 6. Buat tabel dan isi data contoh (5 kategori + 20 buku)
 php artisan migrate:fresh --seed
 
-# 7. Jalankan server pengembangan
+# 5. Jalankan server
 php artisan serve
 ```
 
-Buka **http://localhost:8000**. Halaman utama akan diarahkan ke daftar buku (`/buku`).
+Jika `composer install` menolak paket karena *security advisory* Laravel 11, tambahkan flag `--no-security-blocking`.
 
-Catatan:
-- Jika Laravel menanyakan apakah berkas `database/database.sqlite` perlu dibuat, jawab **yes**. Berkas ini tidak ikut di-commit karena sudah terdaftar di `.gitignore`.
-- Jika `composer install` menolak paket karena *security advisory* (Laravel 11 sudah melewati masa dukungan keamanan), tambahkan flag `--no-security-blocking`. Lihat [Catatan Teknis](#11-catatan-teknis).
-- Berkas `.env` **tidak** disertakan di repositori. Gunakan `.env.example` sebagai acuan.
+### 4.2 Akun Uji (Seeder Lokal)
 
-## 4. Arsitektur MVC dan Routing RESTful
+| Email | Password |
+|---|---|
+| `pustakawan@del.ac.id` | `password123` |
 
-### 4.1 Pemisahan tanggung jawab (Separation of Concerns)
+Akun ini hanya untuk pengujian lokal oleh dosen dan asisten.
+
+### 4.3 Impor Koleksi Postman
+
+1. Buka Postman, klik **Import**, lalu pilih `docs/SIPUS-Del-APIv1.postman_collection.json`.
+2. Pada tab **Variables** milik collection, pastikan:
+   - `base_url` = `http://localhost:8000/api/v1`
+   - `token` = kosong (isi dengan `data.access_token` hasil login)
+   - `buku_id` = kosong (terisi otomatis oleh script post-response pada request pembuatan buku)
+3. Jalankan request **Login**, salin `access_token` ke variabel `token`.
+4. Tambahkan header `Accept: application/json` pada setiap request agar galat validasi berupa JSON, bukan redirect HTML.
+
+### 4.4 Kontrak OpenAPI
+
+Berkas kontrak: [`docs/openapi-sipus-v1.yaml`](docs/openapi-sipus-v1.yaml). Isinya dapat ditempel ke <https://editor.swagger.io> untuk melihat dokumentasi interaktif.
+
+### 4.5 Keamanan Token
+
+- Berkas `.env` dan `vendor/` tidak di-commit (terdaftar di `.gitignore`). Gunakan `.env.example` sebagai acuan.
+- Tidak ada Personal Access Token GitHub (`ghp_...`) yang ditulis di kode maupun README. Token pada screenshot sudah disensor.
+- Pada kode konsumsi OpenLibrary, verifikasi SSL hanya dimatikan pada `app()->environment('local')` (lihat bagian 6.4).
+
+---
+
+## 5. Galeri Bukti Pengujian
+
+Tujuh skenario wajib (poin 5.3.5 modul) ditampilkan berurutan, diikuti bukti tambahan.
+
+### (a) Uji SOAP XML dan `<soap:Fault>`
+
+| Request SOAP sukses (`<active_loans>`, `<is_cleared>`) | Respons `<soap:Fault>` |
+|---|---|
+| ![Request SOAP sukses](docs/ss/req_soap_sukses.png) | ![SOAP Fault](docs/ss/soap_fault.png) |
+
+### (b) Login Bearer Token
+
+| `POST /auth/login` (token diterbitkan) | Login via request alternatif | `GET /auth/me` dengan token |
+|---|---|---|
+| ![POST login](docs/ss/post_login.png) | ![Login request 1](docs/ss/req1_login.png) | ![GET login](docs/ss/get_login.png) |
+
+Akses tanpa token ditolak dengan `401 Unauthorized` (RFC 7807):
+
+![GET tanpa token](docs/ss/get_tanpatoken.png)
+
+### (c) GET Katalog Terpaginasi dan HATEOAS
+
+Katalog dengan buku bersetok 0 membuktikan tautan `pinjam_buku` **hilang** secara dinamis ketika stok habis:
+
+![Katalog dengan stok 0](docs/ss/katalog_stok0.png)
+
+<!-- Tambahkan screenshot GET /bukus yang menampilkan blok "meta" paginasi, lalu hilangkan komentar pada baris berikut:
+![Katalog terpaginasi](docs/screenshots/NAMA_FILE_KATALOG.png)
+-->
+
+### (d) POST Buku: 201 Created dan Header `Location`
+
+![POST buku baru](docs/ss/post_bukubaru.png)
+
+### (e) Perbedaan PUT dan PATCH
+
+| `PUT` (penggantian penuh, atribut yang tidak dikirim direset) | `PATCH` (hanya atribut yang dikirim berubah) |
+|---|---|
+| ![PUT](docs/ss/put.png) | ![PATCH](docs/ss/patch.png) |
+
+### (f) Peminjaman Sukses dan Penolakan (422 / 409)
+
+| Peminjaman sukses (`201 Created`) | Penolakan 422 (validasi atau stok habis) | Penolakan 409 (konflik) |
+|---|---|---|
+| ![Peminjaman sukses](docs/ss/pinjambuku_sukses.png) | ![422](docs/ss/422.png) | ![409](docs/ss/409.png) |
+
+Pengembalian buku dan penolakan penghapusan buku yang sedang dipinjam:
+
+| Pengembalian buku (`200 OK`, stok +1) | Hapus buku yang sedang dipinjam (`409 Conflict`) |
+|---|---|
+| ![Kembalikan buku](docs/ss/kembalikan_buku.png) | ![Hapus buku dipinjam](docs/ss/hapusbukuyangdipinjam.png) |
+
+### (g) Latihan GitHub REST API (token disensor)
+
+<!-- Tambahkan screenshot latihan GitHub REST API (GET /users/{username} atau PATCH /user, token disensor), lalu hilangkan komentar pada baris berikut:
+![GitHub REST API](docs/screenshots/NAMA_FILE_GITHUB.png)
+-->
+
+### Bukti Tambahan: REST Service Consumer (OpenLibrary)
+
+Fitur `GET /api/v1/bukus/{id}/referensi-eksternal` diuji dalam empat skenario:
+
+| Skenario | Hasil yang Diharapkan | Bukti |
+|---|---|---|
+| **R1**: buku lokal ada, ISBN tidak ada di OpenLibrary | `404`, `External Reference Not Found` | ![R1](docs/ss/R1.png) |
+| **R2**: pembuatan buku uji dengan ISBN nyata | `201 Created` + `Location` | ![R2](docs/ss/R2.png) |
+| **R2b**: referensi eksternal sukses | `200 OK`, blok `referensi_eksternal` | ![R2b](docs/ss/R2%20b.png) |
+| **R2c**: hapus buku uji | `204 No Content`, body kosong | ![R2c](docs/ss/R2%20c.png) |
+| **R3**: buku lokal tidak ada | `404`, `Resource Not Found` (OpenLibrary tidak dihubungi) | ![R3](docs/ss/R3.png) |
+
+### Bukti Tambahan: Galat Global RFC 7807
+
+| `401` tanpa token | `404` resource tidak ada | `422` validasi gagal |
+|---|---|---|
+| ![401](docs/ss/req2_401.png) | ![404](docs/ss/req2_404.png) | ![422](docs/ss/req2_422.png) |
+
+---
+
+## 6. Arsitektur dan Keputusan Desain
+
+### 6.1 Struktur Berkas Utama
 
 | Lapisan | Lokasi | Tanggung jawab |
 |---|---|---|
-| **Model** | `app/Models/Buku.php`, `app/Models/Kategori.php` | Struktur data, relasi, dan atribut `$fillable`. Tidak berisi HTML. |
-| **View** | `resources/views/buku/*`, `resources/views/kategori/*`, `resources/views/components/layout.blade.php` | Menampilkan data lewat Blade. Tidak ada kueri SQL di view. |
-| **Controller** | `app/Http/Controllers/BukuController.php`, `KategoriController.php` | Menerima request, memvalidasi, memanggil Model, dan memilih View. |
-| **Routes** | `routes/web.php` | Pemetaan URL ke Controller. |
-| **Migration, Factory, Seeder** | `database/` | Skema data berversi dan data contoh. |
+| Rute REST | `routes/api.php` | Prefiks `/api/v1`, pemisahan rute publik dan `auth:sanctum` |
+| Rute SOAP | `routes/web.php` | `/soap/sipus.wsdl` dan `/soap/sipus` (dikecualikan dari CSRF) |
+| Controller SOAP | `app/Http/Controllers/Soap/LibrarySoapController.php` | WSDL, pemrosesan envelope, `<soap:Fault>` |
+| Controller REST | `app/Http/Controllers/Api/V1/` | `BukuApiController`, `PeminjamanApiController`, `BukuReferensiApiController`, `AuthTokenController` |
+| Resource | `app/Http/Resources/Api/V1/` | `BukuResource`, `PeminjamanResource` (pemisah skema database dari JSON publik, HATEOAS) |
+| Konfigurasi galat | `bootstrap/app.php` | Penyeragaman galat 401, 404, 422 ke RFC 7807 |
 
-### 4.2 Alur request (contoh: `GET /buku`)
+### 6.2 Transaksi Sirkulasi ACID
 
-```
-Browser
-  -> public/index.php                (titik masuk tunggal, memuat Composer autoloader)
-  -> bootstrap/app.php               (Application Container, routing, konfigurasi middleware)
-  -> Service Provider                (register() dan boot(), termasuk AppServiceProvider)
-  -> Middleware pipeline             (session, cookie, validasi token CSRF)
-  -> routes/web.php                  (cocok dengan buku.index)
-  -> BukuController@index            (Buku::with('kategori')->latest()->paginate(10))
-  -> Model Eloquent -> SQLite        (3 kueri: count, bukus, kategoris)
-  -> View buku.index + <x-layout>    (render Blade menjadi HTML)
-  -> HTTP Response                   (200 OK) -> Browser
-```
+Peminjaman dan pengembalian dibungkus `DB::transaction()` dengan `lockForUpdate()` pada baris buku. Pengunci eksklusif mencegah *race condition*: dua permintaan serentak untuk buku bersetok 1 tidak dapat sama-sama lolos.
 
-### 4.3 Daftar rute
+- Stok kurang dari 1: dibatalkan dengan `422 Unprocessable Content`.
+- Mahasiswa masih meminjam buku yang sama dan belum mengembalikan: `409 Conflict`.
+- Pengembalian pada transaksi berstatus `dikembalikan`: `409 Conflict`.
 
-`Route::resource('buku', BukuController::class)` dan `Route::resource('kategori', KategoriController::class)` mendaftarkan masing-masing 7 aksi baku CRUD. Ditambah satu rute `/` yang mengarahkan ke `buku.index`, total **15 rute**.
+### 6.3 Mitigasi N+1 Query
 
-| Method | URI | Nama rute | Aksi |
-|---|---|---|---|
-| GET/HEAD | `buku` | `buku.index` | `BukuController@index` |
-| GET/HEAD | `buku/create` | `buku.create` | `BukuController@create` |
-| POST | `buku` | `buku.store` | `BukuController@store` |
-| GET/HEAD | `buku/{buku}` | `buku.show` | `BukuController@show` |
-| GET/HEAD | `buku/{buku}/edit` | `buku.edit` | `BukuController@edit` |
-| PUT/PATCH | `buku/{buku}` | `buku.update` | `BukuController@update` |
-| DELETE | `buku/{buku}` | `buku.destroy` | `BukuController@destroy` |
-| (7 rute yang sama) | `kategori...` | `kategori.*` | `KategoriController@*` |
+Daftar buku memakai `with('kategori')->withCount('peminjamans')` sehingga jumlah kueri tetap konstan berapa pun jumlah barisnya.
 
-![Hasil php artisan route:list](docs/screenshots/10-route-list.png)
+### 6.4 Konsumsi OpenLibrary (REST Service Consumer)
 
-### 4.4 Implicit Route Model Binding
+- Pemanggilan memakai `Http::acceptJson()->timeout(8)` ke `https://openlibrary.org/api/books` dengan parameter `bibkeys=ISBN:{isbn}`, `format=json`, `jscmd=data`.
+- Header `User-Agent` kustom disertakan sesuai etika penggunaan API publik.
+- Pengecekan SSL (`withoutVerifying()`) hanya aktif pada environment `local` untuk mengatasi `cURL error 60` di Windows. Pada produksi, verifikasi tetap aktif.
+- Penanganan galat: ISBN tidak ditemukan menghasilkan `404 External Reference Not Found`; layanan eksternal bermasalah menghasilkan `502`; koneksi gagal atau timeout menghasilkan `504 Gateway Timeout - External Service Unreachable`.
 
-Parameter `{buku}` dan `{kategori}` pada URL dicocokkan dengan type-hint pada method controller, sehingga Laravel otomatis mengambil record dari database (dan menghasilkan 404 jika tidak ditemukan) tanpa `Buku::find($id)` manual:
+---
 
-```php
-public function show(Buku $buku)      // GET /buku/10  -> Buku dengan id 10
-public function edit(Buku $buku)
-public function update(Request $request, Buku $buku)
-public function destroy(Buku $buku)
-```
+## 7. Riwayat Git
 
-![Halaman detail buku](docs/screenshots/08-detail-buku.png)
-
-## 5. Model Relasional dan Eloquent ORM
-
-### 5.1 Skema data (Migrations)
-
-```mermaid
-erDiagram
-    KATEGORIS ||--o{ BUKUS : "memiliki banyak"
-    KATEGORIS {
-        bigint id PK
-        string kode_kategori UK
-        string nama_kategori
-        timestamp created_at
-        timestamp updated_at
-    }
-    BUKUS {
-        bigint id PK
-        string isbn UK
-        string judul
-        string penulis
-        string penerbit
-        smallint tahun_terbit
-        bigint kategori_id FK
-        int stok
-        text sinopsis
-        timestamp created_at
-        timestamp updated_at
-    }
-```
-
-| Tabel | Kolom | Tipe dan constraint |
-|---|---|---|
-| `kategoris` | `kode_kategori` | `string(10)`, **unique** |
-| | `nama_kategori` | `string(100)` |
-| `bukus` | `isbn` | `string(17)`, **unique** |
-| | `judul` | `string(200)`, **index** (mempercepat pencarian judul) |
-| | `penulis`, `penerbit` | `string(150)` |
-| | `tahun_terbit` | `unsignedSmallInteger` |
-| | `kategori_id` | `foreignId` ke `kategoris.id`, `restrictOnDelete()` |
-| | `stok` | `unsignedInteger`, default `0` (tidak bisa negatif) |
-| | `sinopsis` | `text`, nullable |
-
-Pilihan desain: `restrictOnDelete()` mencegah kategori yang masih memiliki buku terhapus sehingga buku tidak menjadi yatim (orphan). Tipe `unsigned` pada `stok` dan `tahun_terbit` menjadi lapisan pengaman kedua setelah validasi aplikasi.
-
-![Hasil migrate:fresh --seed](docs/screenshots/11-migrasi-seeder.png)
-
-### 5.2 Model, relasi, dan mass assignment
-
-```php
-// app/Models/Kategori.php
-protected $fillable = ['kode_kategori', 'nama_kategori'];
-public function bukus(): HasMany { return $this->hasMany(Buku::class); }
-
-// app/Models/Buku.php
-protected $fillable = ['isbn', 'judul', 'penulis', 'penerbit',
-                       'tahun_terbit', 'kategori_id', 'stok', 'sinopsis'];
-public function kategori(): BelongsTo { return $this->belongsTo(Kategori::class); }
-```
-
-`$fillable` hanya mengizinkan kolom yang terdaftar untuk diisi lewat `create()` / `update()`, sehingga kolom lain (misalnya `id`) tidak bisa disisipkan lewat request (proteksi Mass Assignment).
-
-### 5.3 Mitigasi N+1 Query
-
-| Lokasi | Teknik |
-|---|---|
-| `BukuController@index` | `Buku::with('kategori')->latest()->paginate(10)` (Eager Loading) |
-| `KategoriController@index` | `Kategori::withCount('bukus')` (agregasi dalam satu kueri) |
-| `BukuController@show`, `KategoriController@show` | `load('kategori')` / `load('bukus')` |
-
-Bukti terukur ada di [bagian 8.3](#83-bukti-audit-kueri-sql-eager-loading-vs-n1).
-
-## 6. Validasi Input dan Keamanan Web
-
-### 6.1 Aturan validasi server-side (`$request->validate()`)
-
-**Buku** (`BukuController::rules()`, dipakai bersama oleh `store` dan `update`):
-
-| Field | Aturan |
-|---|---|
-| `isbn` | `required`, `string`, `max:17`, **`unique:bukus,isbn`** (saat update, record yang sedang diedit dikecualikan dengan `Rule::unique(...)->ignore($buku->id)`) |
-| `judul` | `required`, `string`, **`min:5`**, `max:200` |
-| `penulis`, `penerbit` | `required`, `string`, `max:150` |
-| `tahun_terbit` | `required`, `integer`, `between:1900,<tahun berjalan>` |
-| `kategori_id` | `required`, `exists:kategoris,id` |
-| `stok` | `required`, `integer`, **`min:0`** |
-| `sinopsis` | `nullable`, `string` |
-
-**Kategori:** `kode_kategori` (`required`, `max:10`, `unique`) dan `nama_kategori` (`required`, `min:3`, `max:100`).
-
-Jika validasi gagal, Laravel mengembalikan pengguna ke form dengan pesan galat per kolom dan mempertahankan isian sebelumnya lewat `old()`.
-
-| Form kosong | Aturan spesifik (ISBN duplikat, judul < 5, stok negatif) |
-|---|---|
-| ![Validasi form kosong](docs/screenshots/03-validasi-kosong.png) | ![Validasi aturan tugas](docs/screenshots/04-validasi-aturan.png) |
-
-### 6.2 Lapisan keamanan
-
-| Ancaman | Perlindungan |
-|---|---|
-| **CSRF** | Semua form `POST`/`PUT`/`DELETE` menyertakan `@csrf`; middleware Laravel memverifikasi token (tanpa token, respons `419 Page Expired`). |
-| **Method spoofing** | Browser hanya mengirim GET/POST, sehingga form edit memakai `@method('PUT')` dan form hapus memakai `@method('DELETE')`. |
-| **XSS** | Seluruh output memakai `{{ }}` yang otomatis di-escape oleh Blade. Tidak ada `{!! !!}`. |
-| **SQL Injection** | Seluruh akses data lewat Eloquent / Query Builder dengan parameter binding, tanpa SQL mentah. |
-| **Mass Assignment** | Properti `$fillable` pada kedua model, dan `create()`/`update()` hanya menerima array hasil `validate()`. |
-| **Integritas data** | `exists:kategoris,id` pada validasi, foreign key di database, dan `restrictOnDelete()`. |
-| **Kerahasiaan konfigurasi** | `.env` dan `vendor/` tidak di-commit (terdaftar di `.gitignore`); disediakan `.env.example` tanpa `APP_KEY`. |
-
-## 7. Blade Templating dan Desain UI
-
-- **Master layout** `resources/views/components/layout.blade.php` dipakai sebagai Blade Component `<x-layout title="...">` oleh semua halaman. Isi halaman dimasukkan lewat `{{ $slot }}` sehingga tidak ada duplikasi navbar atau `<head>` di tiap view.
-- **Tema Del Royal Purple** (`#4C1D95`) untuk navbar, judul, dan tombol utama (`.btn-del`, hover `#3B0764`), dibangun di atas Bootstrap 5.3.
-- **Flash message**: `session('success')` (kotak hijau) dan `session('error')` (kotak merah) ditampilkan di layout dan dapat ditutup.
-- **Pagination aktif**: `paginate(10)` dengan `Paginator::useBootstrapFive()` di `AppServiceProvider`.
-- **Data kosong**: `@forelse ... @empty ... @endforelse` pada tabel buku dan kategori.
-- **Form DRY**: `_form.blade.php` dipakai bersama oleh halaman tambah dan edit (`@include`), menampilkan galat dengan `@error`.
-
-| Struktur view | |
-|---|---|
-| `components/layout.blade.php` | Master shell |
-| `buku/` | `index`, `create`, `edit`, `show`, `_form` |
-| `kategori/` | `index`, `create`, `edit`, `show`, `_form` |
-
-**Tampilan aplikasi**
-
-![Daftar buku dengan pagination](docs/screenshots/01-daftar-buku.png)
-
-![Daftar kategori dengan jumlah buku](docs/screenshots/02-daftar-kategori.png)
-
-| Flash sukses setelah tambah buku | Flash galat saat hapus kategori yang masih berisi buku |
-|---|---|
-| ![Flash sukses](docs/screenshots/05-flash-sukses.png) | ![Flash galat](docs/screenshots/06-flash-error-kategori.png) |
-
-| Pagination halaman 2 | Form edit (terisi data lama) |
-|---|---|
-| ![Pagination halaman 2](docs/screenshots/07-pagination-hal2.png) | ![Form edit](docs/screenshots/09-form-edit.png) |
-
-Catatan: screenshot flash sukses dan halaman 2 diambil setelah satu buku ditambahkan lewat form, sehingga total tertulis 21 buku. Data seeder awal berjumlah 20 buku.
-
-## 8. Seeder, Factory, dan Audit Kueri SQL
-
-### 8.1 Seeder dan Factory
-
-- `DatabaseSeeder` membuat **5 kategori** tetap (PRG Pemrograman, DBS Basis Data, JRK Jaringan Komputer, SIF Sistem Informasi, AIX Kecerdasan Buatan), lalu memanggil `Buku::factory(20)->create()`.
-- `BukuFactory` membangkitkan data realistis dengan Faker: ISBN-13 unik, judul dari kombinasi awalan dan topik informatika, penulis bernama Indonesia (`APP_FAKER_LOCALE=id_ID`), penerbit dari daftar penerbit nyata, tahun 2005 sampai 2025, stok 0 sampai 25, dan sinopsis acak.
-- `KategoriFactory` tersedia untuk pembuatan kategori tambahan.
-
-```bash
-php artisan migrate:fresh --seed
-php artisan tinker --execute="echo App\Models\Buku::count().' buku, '.App\Models\Kategori::count().' kategori';"
-# 20 buku, 5 kategori
-```
-
-### 8.2 Listener audit SQL
-
-Pada `AppServiceProvider::boot()`:
-
-```php
-DB::listen(function ($query) {
-    Log::info(sprintf("[SQL AUDIT] (%.2f ms) %s", $query->time, $query->sql));
-});
-```
-
-Setiap kueri dicatat ke `storage/logs/laravel.log` (`LOG_STACK=single`, `LOG_LEVEL=debug`). Kueri ke tabel `sessions` berasal dari driver session database Laravel 11 dan bukan bagian dari data buku.
-
-### 8.3 Bukti audit kueri SQL: Eager Loading vs N+1
-
-Prosedur: log dikosongkan, halaman `/buku` dibuka, lalu log dihitung.
-
-```powershell
-Set-Content storage\logs\laravel.log ""
-Select-String 'SQL AUDIT' storage\logs\laravel.log | ForEach-Object { $_.Line } | Out-File docs\bukti-eager-loading.txt
-(Select-String 'from "kategoris"' storage\logs\laravel.log).Count
-```
-
-| Kondisi | Kode di `index()` | Kueri ke tabel `kategoris` | Berkas log |
-|---|---|---|---|
-| **Dengan Eager Loading** | `Buku::with('kategori')->latest()->paginate(10)` | **1** kueri (`where "id" in (...)`) | [docs/bukti-eager-loading.txt](docs/bukti-eager-loading.txt) |
-| **Tanpa Eager Loading** (N+1) | `Buku::latest()->paginate(10)` | **20** kueri tercatat (halaman dimuat dua kali, masing-masing 10 kueri untuk 10 baris) | [docs/bukti-tanpa-eager-loading.txt](docs/bukti-tanpa-eager-loading.txt) |
-
-Kueri data pada kondisi **dengan Eager Loading** (3 kueri, tetap 3 berapa pun jumlah barisnya):
-
-```
-[SQL AUDIT] (0.13 ms) select count(*) as aggregate from "bukus"
-[SQL AUDIT] (0.14 ms) select * from "bukus" order by "created_at" desc limit 10 offset 0
-[SQL AUDIT] (0.15 ms) select * from "kategoris" where "kategoris"."id" in (1, 2, 3, 4, 5)
-```
-
-Penjelasan: `paginate()` selalu menambah satu kueri `count(*)` untuk menghitung total halaman, sehingga totalnya 3 kueri (bukan 2 seperti pada contoh teori modul). Yang penting, jumlah kueri **konstan**. Tanpa Eager Loading, setiap baris memicu satu kueri `select * from "kategoris" where "id" = ? limit 1` (Lazy Loading), sehingga kueri bertambah sebanding dengan jumlah baris (N+1).
-
-![Bukti audit SQL](docs/screenshots/12-audit-sql.png)
-
-## 9. Riwayat Git
-
-Repositori memakai **Conventional Commits** dengan commit bertahap per lapisan:
+Repositori memakai **Conventional Commits** pada branch `week9-rest-api`:
 
 | Commit | Isi |
 |---|---|
-| `chore: initialize laravel 11 project` | Kerangka proyek |
-| `feat(migration): create kategoris and bukus tables schema` | Skema data |
-| `feat(model): define relationships and fillable attributes` | Model dan relasi |
-| `feat(seeder): add factories and seeders for 5 kategori and 20 buku` | Factory dan seeder |
-| `feat(controller): implement restful actions and server validation` | Routes dan controller |
-| `feat(views): construct blade component layout and crud templates` | Layout dan view |
-| `perf(eager-loading): optimize sql queries to prevent n+1 problem` | Eager Loading dan audit SQL |
-| `docs: add readme, screenshots and sql audit evidence` | Dokumentasi |
+| `feat(soap): add concise LibrarySoapController and WSDL contract for clearance check` | Endpoint SOAP dan WSDL |
+| `feat(api-core): install laravel api routing, ApiResponse trait, and RFC 7807 exception handler` | Infrastruktur API dan galat global |
+| `feat(api-auth): implement stateless Sanctum bearer token login and revocation` | Login, me, logout |
+| `feat(api-books): build BukuApiController and BukuResource with dynamic HATEOAS links` | CRUD buku dan HATEOAS |
+| `feat(api-loans): implement ACID book borrowing and return REST endpoints with lockForUpdate` | Sirkulasi peminjaman |
+| `feat(api-consumer): integrate external book metadata lookup via Laravel Http client` | Konsumsi OpenLibrary |
+| `docs(contract): add OpenAPI 3.0 specification, Postman collection, and test report in README` | Kontrak, koleksi Postman, README |
 
-Lihat riwayat lengkap dengan `git log --oneline`.
-![Riwayat commit](docs/screenshots/13-git-log.png)
- Berkas `.env` dan folder `vendor/` tidak pernah di-commit.
+Lihat riwayat lengkap dengan `git log --oneline`. Berkas `.env` dan token rahasia tidak pernah di-commit.
 
-## 10. Kesesuaian dengan Spesifikasi Tugas
+---
 
-| Persyaratan | Pemenuhan | Bagian |
-|---|---|---|
-| Skema `kategoris` dan `bukus` dengan tipe data dan index presisi | Unique pada ISBN dan kode, index pada judul, foreign key, tipe unsigned | [5.1](#51-skema-data-migrations) |
-| Relasi `hasMany` / `belongsTo`, `$fillable`, Eager Loading di semua index | Kedua model, `with('kategori')` dan `withCount('bukus')` | [5.2](#52-model-relasi-dan-mass-assignment), [5.3](#53-mitigasi-n1-query) |
-| `Route::resource` buku dan kategori, 7 method, Route Model Binding | 14 rute resource + 1 redirect | [4.3](#43-daftar-rute), [4.4](#44-implicit-route-model-binding) |
-| Validasi ketat (ISBN unik, judul min 5, stok min 0), `@csrf`, method spoofing | `$request->validate()`, `@csrf`, `@method` | [6](#6-validasi-input-dan-keamanan-web) |
-| Master layout `<x-layout>` Del Purple, pagination, flash, `@forelse` | Seluruhnya diterapkan | [7](#7-blade-templating-dan-desain-ui) |
-| Seeder dan Factory (min. 5 kategori, 20 buku) dan log audit SQL | 5 kategori, 20 buku, log dengan dan tanpa Eager Loading | [8](#8-seeder-factory-dan-audit-kueri-sql) |
-| `.env` tidak di-commit, `.env.example` valid | Terdaftar di `.gitignore`, `.env.example` disertakan | [6.2](#62-lapisan-keamanan) |
+## 8. Kesesuaian dengan Spesifikasi Tugas
 
-## 11. Catatan Teknis
-
-- **Versi Laravel.** Modul mewajibkan Laravel 11.x. Proyek dibuat dengan `composer create-project laravel/laravel:^11.0 ... --no-security-blocking` karena Composer versi terbaru memblokir seluruh rilis Laravel 11.x akibat *security advisory* (Laravel 11 sudah melewati masa dukungan keamanan). Proyek ini hanya untuk keperluan pembelajaran di lingkungan lokal dan tidak dimaksudkan untuk dipublikasikan sebagai aplikasi produksi.
-- **Pesan validasi** tampil dalam bahasa Inggris karena `APP_LOCALE=en` (Laravel 11 tidak menyertakan terjemahan bahasa Indonesia secara bawaan). Label form dan pesan flash memakai bahasa Indonesia.
-- **Bootstrap** dimuat dari CDN (`cdn.jsdelivr.net`), sehingga tampilan membutuhkan koneksi internet.
-- **Sesi dan cache** memakai driver `database` (bawaan Laravel 11), sehingga log audit juga memuat kueri ke tabel `sessions`.
+| No | Persyaratan | Bobot | Pemenuhan | Bagian |
+|---|---|---|---|---|
+| 1 | Analisis kelayakan dan endpoint SOAP bebas pustaka (WSDL, envelope, Fault) | 15% | README bagian 2, `LibrarySoapController`, bukti (a) | [2](#2-analisis-kebutuhan-dan-kelayakan-web-services), [5a](#a-uji-soap-xml-dan-soapfault) |
+| 2 | REST API Provider katalog buku (GET, POST, PUT vs PATCH, DELETE, N+1 bebas) | 25% | `BukuApiController`, `BukuResource`, bukti (c), (d), (e) | [3.3](#33-rest-katalog-buku), [5](#5-galeri-bukti-pengujian) |
+| 3 | Sirkulasi peminjaman ACID dan Bearer Token Sanctum | 30% | `PeminjamanApiController`, `AuthTokenController`, bukti (b), (f) | [3.2](#32-rest-autentikasi), [3.4](#34-rest-sirkulasi-peminjaman-acid), [6.2](#62-transaksi-sirkulasi-acid) |
+| 4 | HATEOAS dinamis, galat global RFC 7807, REST Consumer (`Http`) | 15% | `_links` kontekstual, `bootstrap/app.php`, `BukuReferensiApiController` | [3.5](#35-format-galat-rfc-7807), [6.4](#64-konsumsi-openlibrary-rest-service-consumer) |
+| 5 | Kontrak OpenAPI, koleksi Postman, bukti uji, Git | 15% | `docs/openapi-sipus-v1.yaml`, `docs/SIPUS-Del-APIv1.postman_collection.json`, galeri bagian 5 | [4](#4-panduan-instalasi-dan-pengujian-cepat), [5](#5-galeri-bukti-pengujian), [7](#7-riwayat-git) |
 
 ---
 
