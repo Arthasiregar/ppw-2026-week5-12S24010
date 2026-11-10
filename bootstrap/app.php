@@ -16,19 +16,15 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
-        // Endpoint SOAP dipanggil mesin eksternal, bukan form browser (tanpa token CSRF)
         $middleware->validateCsrfTokens(except: [
             'soap/*',
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
-
-        // 1. Semua rute /api/* selalu dirender sebagai JSON (bukan halaman HTML)
         $exceptions->shouldRenderJsonWhen(function (Request $request, Throwable $e) {
             return $request->is('api/*') || $request->expectsJson();
         });
 
-        // 2. 422 Unprocessable Content (RFC 7807)
         $exceptions->render(function (ValidationException $e, Request $request) {
             if ($request->is('api/*')) {
                 return response()->json([
@@ -42,7 +38,6 @@ return Application::configure(basePath: dirname(__DIR__))
             }
         });
 
-        // 3. 401 Unauthorized (RFC 7807)
         $exceptions->render(function (AuthenticationException $e, Request $request) {
             if ($request->is('api/*')) {
                 return response()->json([
@@ -55,7 +50,6 @@ return Application::configure(basePath: dirname(__DIR__))
             }
         });
 
-        // 4. 404 Not Found (RFC 7807)
         $exceptions->render(function (NotFoundHttpException $e, Request $request) {
             if ($request->is('api/*')) {
                 return response()->json([
@@ -67,5 +61,4 @@ return Application::configure(basePath: dirname(__DIR__))
                 ], 404)->header('Content-Type', 'application/problem+json');
             }
         });
-
     })->create();

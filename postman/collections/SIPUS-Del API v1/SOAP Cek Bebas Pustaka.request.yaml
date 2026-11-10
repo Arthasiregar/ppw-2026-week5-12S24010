@@ -1,0 +1,27 @@
+$kind: http-request
+url: http://localhost:8000/soap/sipus
+method: POST
+headers:
+  Content-Type: text/xml; charset=utf-8
+body:
+  type: json
+  content: "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r
+
+    <soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\"\r
+
+    \               xmlns:m=\"http://sipus.del.ac.id/soap/library\">\r
+
+    \    <soap:Body>\r
+
+    \        <m:CheckClearanceStatusRequest>\r
+
+    \            <m:nim_peminjam>12S22001</m:nim_peminjam>\r
+
+    \        </m:CheckClearanceStatusRequest>\r
+
+    \    </soap:Body>\r
+
+    </soap:Envelope>"
+auth:
+  type: noauth
+order: 12000
