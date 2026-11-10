@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\V1\AuthTokenController;
 use App\Http\Controllers\Api\V1\BukuApiController;
+use App\Http\Controllers\Api\V1\BukuReferensiApiController;
 use App\Http\Controllers\Api\V1\PeminjamanApiController;
 use Illuminate\Support\Facades\Route;
 
@@ -11,6 +12,7 @@ Route::prefix('v1')->group(function () {
     Route::post('/auth/login', [AuthTokenController::class, 'login']);
     Route::get('/bukus', [BukuApiController::class, 'index']);
     Route::get('/bukus/{id}', [BukuApiController::class, 'show']);
+    Route::get('/bukus/{id}/referensi-eksternal', [BukuReferensiApiController::class, 'show']);
 
     // ===== Endpoint terproteksi Bearer Token =====
     Route::middleware('auth:sanctum')->group(function () {
